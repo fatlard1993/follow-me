@@ -1,0 +1,14 @@
+{
+  "overview": [
+    "Ask to follow another player, or ask them to follow you, and the follower is walked along behind: free to wander and look around a little, always pulled back in line.",
+    "Either way round, the one asked decides."
+  ],
+  "versions": {
+    "1.0.0": [
+      "/follow asks to follow somebody, /follow lead asks them to follow you, /follow stop ends it.",
+      "The follower walks the leader's own trail, jumps what is in the way, rides along in their boat and goes through portals after them.",
+      "Within a few blocks nothing pulls; further out it tugs harder, like a rubber band.",
+      "Falling too far behind loses the leader and ends it."
+    ]
+  }
+}
