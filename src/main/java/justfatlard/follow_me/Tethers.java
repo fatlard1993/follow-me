@@ -54,10 +54,14 @@ public final class Tethers {
 		Entity declined;
 		/** The last place the leader stood before going through to another level. */
 		Crumb portal;
+		/** Carried on a theme ride rather than walked; see {@link Rides}. */
+		final boolean ride;
+		Rides.Ride carriage;
 
-		Tether(UUID follower, UUID leader) {
+		Tether(UUID follower, UUID leader, boolean ride) {
 			this.follower = follower;
 			this.leader = leader;
+			this.ride = ride;
 		}
 	}
 
@@ -90,6 +94,12 @@ public final class Tethers {
 		return tether == null ? null : tether.leader;
 	}
 
+	/** On a theme ride: held in the seat, and kept from harm. */
+	public static boolean carried(ServerPlayer player) {
+		Tether tether = tethers.get(player.getUUID());
+		return tether != null && tether.ride;
+	}
+
 	/**
 	 * Why this follower cannot start following that leader right now, or null if they can. Asked
 	 * when the request is made and again on the yes, since either may have walked off between.
@@ -108,7 +118,7 @@ public final class Tethers {
 		return null;
 	}
 
-	public static void start(ServerPlayer follower, ServerPlayer leader) {
+	public static void start(ServerPlayer follower, ServerPlayer leader, boolean ride) {
 		String why = cannot(follower, leader);
 		if (why != null) {
 			Main.say(follower, why);
@@ -118,14 +128,16 @@ public final class Tethers {
 		Tether previous = tethers.remove(follower.getUUID());
 		if (previous != null) {
 			ServerPlayer old = player(follower.level().getServer(), previous.leader);
+			// Off any ride and set down by the one they are about to follow, not the one they left.
+			Rides.release(previous, follower, leader);
 			if (old != null && old != leader) Main.say(old, name(follower) + " stopped following you");
 		}
-		Tether tether = new Tether(follower.getUUID(), leader.getUUID());
+		Tether tether = new Tether(follower.getUUID(), leader.getUUID(), ride);
 		tether.lastFollower = follower.position();
 		tether.lastLeader = leader.position();
 		tethers.put(follower.getUUID(), tether);
-		Main.say(follower, "Following " + name(leader) + " - /follow stop to stop");
-		Main.say(leader, name(follower) + " is following you");
+		Main.say(follower, (ride ? "Riding along behind " : "Following ") + name(leader) + " - /follow stop to stop");
+		Main.say(leader, name(follower) + (ride ? " is riding along behind you" : " is following you"));
 	}
 
 	/** Stop following, and stop being followed: whichever this player is doing, both. */
@@ -139,12 +151,14 @@ public final class Tethers {
 				any = true;
 				Main.say(player, "Stopped following");
 				ServerPlayer leader = player(server, tether.leader);
+				Rides.release(tether, player, leader);
 				if (leader != null) Main.say(leader, name(player) + " stopped following you");
 			} else if (tether.leader.equals(player.getUUID())) {
 				it.remove();
 				any = true;
 				Main.say(player, "Nobody is following you now");
 				ServerPlayer follower = player(server, tether.follower);
+				Rides.release(tether, follower, player);
 				if (follower != null) Main.say(follower, name(player) + " let you go");
 			}
 		}
@@ -158,9 +172,11 @@ public final class Tethers {
 			if (tether.leader.equals(player)) {
 				it.remove();
 				ServerPlayer follower = player(server, tether.follower);
+				Rides.release(tether, follower, player(server, player));
 				if (follower != null) Main.say(follower, "The one you were following left");
 			} else if (tether.follower.equals(player)) {
 				it.remove();
+				Rides.release(tether, player(server, player), player(server, tether.leader));
 			}
 		}
 	}
@@ -176,7 +192,7 @@ public final class Tethers {
 				// The disconnect handler has it; a tick can land between the two.
 				continue;
 			}
-			String ended = ended(follower, leader);
+			String ended = ended(tether, follower, leader);
 			if (ended != null) {
 				end(tether, follower, leader, ended);
 				continue;
@@ -186,10 +202,11 @@ public final class Tethers {
 	}
 
 	/** Why this tether is over, or null while it holds. */
-	private static String ended(ServerPlayer follower, ServerPlayer leader) {
+	private static String ended(Tether tether, ServerPlayer follower, ServerPlayer leader) {
 		if (!follower.isAlive() || !leader.isAlive()) return "Stopped following: somebody died";
 		if (follower.isSpectator() || leader.isSpectator()) return "Stopped following: spectating";
-		if (follower.level() == leader.level() && follower.distanceTo(leader) > FollowConfig.leash()) {
+		// A ride skips ahead along the trail rather than losing anyone.
+		if (!tether.ride && follower.level() == leader.level() && follower.distanceTo(leader) > FollowConfig.leash()) {
 			return "Lost " + name(leader) + " - too far behind";
 		}
 		return null;
@@ -197,6 +214,7 @@ public final class Tethers {
 
 	private static void end(Tether tether, ServerPlayer follower, ServerPlayer leader, String why) {
 		tethers.remove(tether.follower, tether);
+		Rides.release(tether, follower, leader);
 		Main.say(follower, why);
 		Main.say(leader, name(follower) + " is not following you any more");
 	}
@@ -206,6 +224,11 @@ public final class Tethers {
 		double leaderSpeed = horizontal(leaderAt.subtract(tether.lastLeader)).length();
 		tether.lastLeader = leaderAt;
 		drop(tether, leader);
+
+		if (tether.ride) {
+			Rides.carry(tether, follower, leader, place);
+			return;
+		}
 
 		if (ride(tether, follower, leader)) {
 			tether.lastFollower = follower.position();

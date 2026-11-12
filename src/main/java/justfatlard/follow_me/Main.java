@@ -5,6 +5,8 @@ import justfatlard.pandorical.api.ActionMenuApi;
 import justfatlard.pandorical.api.PandoricalApi;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.ChatFormatting;
@@ -30,11 +32,17 @@ public class Main implements ModInitializer {
 		PandoricalApi.actionMenus().suggestMenu(MOD_ID + ":follow", "Follow", List.of(
 			ActionMenuApi.Button.runs("minecraft:leather_boots", "Follow", "follow {player}"),
 			ActionMenuApi.Button.runs("minecraft:lead", "Lead", "follow lead {player}"),
+			ActionMenuApi.Button.runs("minecraft:saddle", "Ride along", "follow {player} ride"),
+			ActionMenuApi.Button.runs("minecraft:carrot_on_a_stick", "Give a ride", "follow lead {player} ride"),
 			ActionMenuApi.Button.runs("minecraft:barrier", "Stop", "follow stop")));
 		PandoricalApi.commandHelp().describe("/follow <player>",
 			"Ask somebody if you can follow them. Once they say yes you are walked along behind them.");
 		PandoricalApi.commandHelp().describe("/follow lead <player>",
 			"Ask somebody to follow you. They decide.");
+		PandoricalApi.commandHelp().describe("/follow <player> ride",
+			"Ask to ride along behind somebody on a creature that suits the land: hands off, and nothing can hurt you.");
+		PandoricalApi.commandHelp().describe("/follow lead <player> ride",
+			"Offer somebody a ride along behind you. They cannot steer or get off until it ends.");
 		PandoricalApi.commandHelp().describe("/follow stop",
 			"Stop following, and stop anybody following you.");
 
@@ -45,6 +53,10 @@ public class Main implements ModInitializer {
 			Asks.tick(server);
 			Tethers.tick(server);
 		});
+		// A theme ride is guaranteed safe: neither the rider nor what carries them can be hurt.
+		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) ->
+			!(entity instanceof ServerPlayer player && Tethers.carried(player)) && !Rides.isMount(entity));
+		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> Rides.onLoad(entity));
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
 			Asks.forget(server, handler.getPlayer().getUUID());
 			Tethers.forget(server, handler.getPlayer().getUUID());

@@ -6,6 +6,7 @@
   "versions": {
     "1.0.0": [
       "/follow asks to follow somebody, /follow lead asks them to follow you, /follow stop ends it.",
+      "Add ride to either ask for a theme ride: carried behind the leader, hands off and unhurtable, on a creature that suits the land - a camel in the desert, a strider over lava, a nautilus at sea, a happy ghast over a drop.",
       "The follower walks the leader's own trail, jumps what is in the way, rides along in their boat and goes through portals after them.",
       "Within a few blocks nothing pulls; further out it tugs harder, like a rubber band.",
       "Falling too far behind loses the leader and ends it."

@@ -17,18 +17,54 @@ The follower walks the leader's own trail rather than a straight line at them, s
 
 Following is never a way to cross the world at once. You have to be within the leash (32 blocks by default) of someone to start, the hop when stuck only ever lands a step behind them, and falling further behind than the leash loses them and ends it. So does a minute left on the far side of a portal they went through, either of you dying, or either of you leaving.
 
+## Theme ride
+
+Add `ride` to either ask - `/follow <player> ride`, `/follow lead <player> ride` - and instead of being walked, the follower is carried: sat on a creature that suits the land underneath, which swaps for another, with a poof, as the land changes.
+
+- **Hands off.** The follower cannot steer, and sneaking does not climb off; `/follow stop` from either of you does. They can still look around, and their view drifts slowly back to the way ahead.
+- **Guaranteed safe.** The creature goes exactly where the leader went, without falling, sticking or being blocked by anything, and neither it nor its rider can be hurt, drown or burn. When it ends, the follower is set down beside the leader, or on the last place the leader stood, rather than over the lava or the drop the ride was crossing; with neither to hand, they get a slow fall and a fireproof few seconds instead.
+- **Fast.** It keeps a few lengths behind the leader, easing up to speed to catch up and slowing to a stop when they stop. It never loses them: fall too far behind and it skips ahead along the trail, and through a portal it meets the follower on the other side with a creature suited to there.
+
+What carries you, by what is underfoot first and then where you are:
+
+| Where | Ride |
+|---|---|
+| Over a drop, or in the End | Happy ghast |
+| Lava, and most of the Nether | Strider |
+| Water | Nautilus |
+| Crimson forest | Hoglin |
+| Soul sand valley, pale garden | Skeleton horse |
+| Lush caves | Giant axolotl |
+| Other caves and underground | Sniffer |
+| Mushroom fields | Mooshroom |
+| Desert | Camel |
+| Badlands | Giant armadillo |
+| Cherry grove | Big pink pig |
+| Snow | Polar bear |
+| Jungle | Panda |
+| Swamp | Giant frog |
+| Dark forest | Big wolf |
+| Taiga | Giant fox |
+| Beach | Giant turtle |
+| Savanna, windswept hills | Llama |
+| Mountains | Big goat |
+| Anywhere else | Horse |
+
+A theme ride suits a small child well: once the offer is accepted, there is nothing to get wrong and nothing that can hurt them.
+
 ## Asking
 
 Either way round, the one who did not ask is the one who answers: a follower agrees to be steered, a leader agrees to be followed.
 
 - `/follow <player>` asks if you can follow them.
 - `/follow lead <player>` asks them to follow you.
+- `/follow <player> ride` and `/follow lead <player> ride` ask the same for a theme ride.
 - `/follow stop` stops following, and stops anybody following you. Either of you can end it at any time.
 - `/follow accept <player>` and `/follow deny <player>` answer.
 
 The ask arrives in the notice tray with buttons to answer it, or as a clickable line in chat for a game that cannot draw the tray. It lapses after a minute. Asking again, either way, takes back the first ask.
 
-There is a **Follow** action menu too, with **Follow**, **Lead** and **Stop**, picking who by face.
+There is a **Follow** action menu too, with **Follow**, **Lead**, **Ride along**, **Give a ride** and **Stop**, picking who by face.
 
 ## Requirements
 
@@ -37,7 +73,7 @@ There is a **Follow** action menu too, with **Follow**, **Lead** and **Stop**, p
 
 ## Pandorical
 
-Pandorical is required on the server. The notice tray asks arrive in, the Follow action menu, the command help and the mod's page of the mod menu are all its. Following itself needs nothing on the client: it is ordinary movement, so it works the same for a player without Pandorical.
+Pandorical is required on the server. The notice tray asks arrive in, the Follow action menu, the command help and the mod's page of the mod menu are all its. Following itself needs nothing on the client: walking is ordinary movement and the rides are ordinary creatures, so both work the same for a player without Pandorical.
 
 ## Configuration
 

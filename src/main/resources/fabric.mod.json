@@ -18,6 +18,9 @@
       "justfatlard.follow_me.Main"
     ]
   },
+  "mixins": [
+    "follow-me.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=${loaderVersion}",
     "fabric-api": "${fabricApiVersion}",

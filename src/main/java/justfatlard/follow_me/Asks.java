@@ -32,7 +32,8 @@ public final class Asks {
 		LEAD
 	}
 
-	record Ask(UUID asker, UUID asked, long until, Way way) {}
+	/** {@code ride}: carried on a theme ride rather than walked; see {@link Rides}. */
+	record Ask(UUID asker, UUID asked, long until, Way way, boolean ride) {}
 
 	/** By asker. */
 	private static final Map<UUID, Ask> asks = new ConcurrentHashMap<>();
@@ -55,7 +56,7 @@ public final class Asks {
 		if (asked != null) PandoricalApi.notices().withdraw(asked, NOTICE_KIND, asker.toString());
 	}
 
-	public static void send(ServerPlayer asker, ServerPlayer asked, Way way) {
+	public static void send(ServerPlayer asker, ServerPlayer asked, Way way, boolean ride) {
 		if (asker == asked) return;
 		ServerPlayer follower = way == Way.FOLLOW ? asker : asked;
 		ServerPlayer leader = way == Way.FOLLOW ? asked : asker;
@@ -68,27 +69,30 @@ public final class Asks {
 		String who = Tethers.name(asker);
 		String them = Tethers.name(asked);
 		long until = asker.level().getGameTime() + 20L * FollowConfig.requestSeconds();
-		Ask previous = asks.put(asker.getUUID(), new Ask(asker.getUUID(), asked.getUUID(), until, way));
+		Ask previous = asks.put(asker.getUUID(), new Ask(asker.getUUID(), asked.getUUID(), until, way, ride));
 		if (previous != null && !previous.asked().equals(asked.getUUID())) {
 			withdraw(Tethers.player(asker.level().getServer(), previous.asked()), asker.getUUID());
 		}
 
 		Main.say(asker, way == Way.FOLLOW
-			? "Asked " + them + " if you can follow them"
-			: "Asked " + them + " to follow you");
+			? "Asked " + them + (ride ? " if you can ride along behind them" : " if you can follow them")
+			: "Asked " + them + (ride ? " to ride along behind you" : " to follow you"));
 
-		Component asking = Component.translatableWithFallback(
-			way == Way.FOLLOW ? "follow-me.ask" : "follow-me.ask-lead",
-			way == Way.FOLLOW ? "%s asks to follow you. " : "%s asks you to follow them. ", who);
+		String key = (way == Way.FOLLOW ? "follow-me.ask" : "follow-me.ask-lead") + (ride ? "-ride" : "");
+		String fallback = way == Way.FOLLOW
+			? (ride ? "%s asks to ride along behind you. " : "%s asks to follow you. ")
+			: (ride ? "%s offers you a ride along behind them. You will not be able to steer or get off until it ends. "
+				: "%s asks you to follow them. ");
+		Component asking = Component.translatableWithFallback(key, fallback, who);
 
 		// The tray where it can be drawn, chat where it cannot.
 		if (PandoricalApi.hasCapability(asked, Capabilities.SCREENS)) {
 			PandoricalApi.notices().offer(asked, new NoticeApi.Notice(
 				asker.getUUID().toString(), NOTICE_KIND,
-				way == Way.FOLLOW ? "minecraft:lead" : "minecraft:leather_boots",
+				ride ? "minecraft:saddle" : way == Way.FOLLOW ? "minecraft:lead" : "minecraft:leather_boots",
 				asking.getString(),
 				List.of(new NoticeApi.Choice("accept", "minecraft:lime_dye",
-						way == Way.FOLLOW ? "Lead them" : "Follow them"),
+						way == Way.FOLLOW ? "Lead them" : ride ? "Ride along" : "Follow them"),
 					new NoticeApi.Choice("deny", "minecraft:barrier", "No thanks")),
 				FollowConfig.requestSeconds()));
 		} else {
@@ -116,8 +120,8 @@ public final class Asks {
 		}
 		asks.remove(asker.getUUID());
 		withdraw(asked, asker.getUUID());
-		if (ask.way() == Way.FOLLOW) Tethers.start(asker, asked);
-		else Tethers.start(asked, asker);
+		if (ask.way() == Way.FOLLOW) Tethers.start(asker, asked, ask.ride());
+		else Tethers.start(asked, asker, ask.ride());
 	}
 
 	public static void deny(ServerPlayer asked, ServerPlayer asker) {
