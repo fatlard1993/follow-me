@@ -18,7 +18,7 @@ import net.minecraft.server.level.ServerPlayer;
  * Asking to follow, which goes both ways: "let me follow you", and "follow me". Either way the one
  * who did not ask is the one who answers, in the notice tray or in chat.
  *
- * <p>Nobody is walked anywhere, or has somebody trailing them, without having said yes to it: a
+ * <p>Nobody is carried anywhere, or has somebody trailing them, without having said yes to it: a
  * follower agrees to be steered, a leader agrees to be followed. One ask at a time from each
  * player; asking again takes back the first.
  */
@@ -32,8 +32,7 @@ public final class Asks {
 		LEAD
 	}
 
-	/** {@code ride}: carried on a theme ride rather than walked; see {@link Rides}. */
-	record Ask(UUID asker, UUID asked, long until, Way way, boolean ride) {}
+	record Ask(UUID asker, UUID asked, long until, Way way) {}
 
 	/** By asker. */
 	private static final Map<UUID, Ask> asks = new ConcurrentHashMap<>();
@@ -56,7 +55,7 @@ public final class Asks {
 		if (asked != null) PandoricalApi.notices().withdraw(asked, NOTICE_KIND, asker.toString());
 	}
 
-	public static void send(ServerPlayer asker, ServerPlayer asked, Way way, boolean ride) {
+	public static void send(ServerPlayer asker, ServerPlayer asked, Way way) {
 		if (asker == asked) return;
 		ServerPlayer follower = way == Way.FOLLOW ? asker : asked;
 		ServerPlayer leader = way == Way.FOLLOW ? asked : asker;
@@ -69,30 +68,29 @@ public final class Asks {
 		String who = Tethers.name(asker);
 		String them = Tethers.name(asked);
 		long until = asker.level().getGameTime() + 20L * FollowConfig.requestSeconds();
-		Ask previous = asks.put(asker.getUUID(), new Ask(asker.getUUID(), asked.getUUID(), until, way, ride));
+		Ask previous = asks.put(asker.getUUID(), new Ask(asker.getUUID(), asked.getUUID(), until, way));
 		if (previous != null && !previous.asked().equals(asked.getUUID())) {
 			withdraw(Tethers.player(asker.level().getServer(), previous.asked()), asker.getUUID());
 		}
 
 		Main.say(asker, way == Way.FOLLOW
-			? "Asked " + them + (ride ? " if you can ride along behind them" : " if you can follow them")
-			: "Asked " + them + (ride ? " to ride along behind you" : " to follow you"));
+			? "Asked " + them + " if you can ride along behind them"
+			: "Asked " + them + " to ride along behind you");
 
-		String key = (way == Way.FOLLOW ? "follow-me.ask" : "follow-me.ask-lead") + (ride ? "-ride" : "");
+		String key = way == Way.FOLLOW ? "follow-me.ask" : "follow-me.ask-lead";
 		String fallback = way == Way.FOLLOW
-			? (ride ? "%s asks to ride along behind you. " : "%s asks to follow you. ")
-			: (ride ? "%s offers you a ride along behind them. You will not be able to steer or get off until it ends. "
-				: "%s asks you to follow them. ");
+			? "%s asks to ride along behind you. "
+			: "%s offers you a ride along behind them. You will not steer, and stay on until one of you stops it. ";
 		Component asking = Component.translatableWithFallback(key, fallback, who);
 
 		// The tray where it can be drawn, chat where it cannot.
 		if (PandoricalApi.hasCapability(asked, Capabilities.SCREENS)) {
 			PandoricalApi.notices().offer(asked, new NoticeApi.Notice(
 				asker.getUUID().toString(), NOTICE_KIND,
-				ride ? "minecraft:saddle" : way == Way.FOLLOW ? "minecraft:lead" : "minecraft:leather_boots",
+				way == Way.FOLLOW ? "minecraft:lead" : "minecraft:saddle",
 				asking.getString(),
 				List.of(new NoticeApi.Choice("accept", "minecraft:lime_dye",
-						way == Way.FOLLOW ? "Lead them" : ride ? "Ride along" : "Follow them"),
+						way == Way.FOLLOW ? "Lead them" : "Ride along"),
 					new NoticeApi.Choice("deny", "minecraft:barrier", "No thanks")),
 				FollowConfig.requestSeconds()));
 		} else {
@@ -120,8 +118,8 @@ public final class Asks {
 		}
 		asks.remove(asker.getUUID());
 		withdraw(asked, asker.getUUID());
-		if (ask.way() == Way.FOLLOW) Tethers.start(asker, asked, ask.ride());
-		else Tethers.start(asked, asker, ask.ride());
+		if (ask.way() == Way.FOLLOW) Tethers.start(asker, asked, true);
+		else Tethers.start(asked, asker, true);
 	}
 
 	public static void deny(ServerPlayer asked, ServerPlayer asker) {

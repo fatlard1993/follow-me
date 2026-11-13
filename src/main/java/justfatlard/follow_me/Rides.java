@@ -28,6 +28,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.Relative;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.ambient.Bat;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
@@ -36,62 +37,91 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * Theme ride: the follower is carried, not walked. They sit on a creature that suits the ground
- * underneath - a camel in the desert, a strider over lava, a nautilus at sea, a happy ghast over
- * a drop - which swaps for another as the land changes.
+ * underneath - a camel in the desert, a strider over lava, a nautilus at sea - which swaps for
+ * another as the land changes, and for one that flies when the leader glides, flies or climbs.
  *
  * <p>The creature is moved by the server along the leader's trail, exactly, with no physics: it
  * cannot fall, stick, drown or burn, and nothing hurts it or its rider. It has no saddle, so the
- * rider has no say in where it goes, and cannot climb off. They can still look around; the view
- * drifts back to the way ahead.
+ * rider has no say in where it goes, and cannot climb off. They are on one every tick of it: a
+ * swap puts them on the new creature before the old one goes.
+ *
+ * <p>They can still look around. Left alone a couple of seconds, the view drifts round to the
+ * leader, slowly, and stops drifting the moment they move it themselves.
  */
 public final class Rides {
 	private Rides() {}
 
+	/** How a creature keeps to the trail. */
+	enum Kind {
+		/** Walks on whatever is under the trail. */
+		GROUND,
+		/** Swims or wades the trail as it is: water, lava. */
+		FLUID,
+		/** Flies the trail as it is, up ladders and off cliffs. */
+		FLYING
+	}
+
 	/** What carries the rider, and how big. Scaled up where the creature is too small to sit on. */
 	enum Theme {
-		HORSE(EntityTypes.HORSE, 1.0),
-		HAPPY_GHAST(EntityTypes.HAPPY_GHAST, 1.0),
-		STRIDER(EntityTypes.STRIDER, 1.5),
-		NAUTILUS(EntityTypes.NAUTILUS, 1.6),
-		HOGLIN(EntityTypes.HOGLIN, 1.0),
-		SKELETON_HORSE(EntityTypes.SKELETON_HORSE, 1.0),
-		AXOLOTL(EntityTypes.AXOLOTL, 3.5),
-		SNIFFER(EntityTypes.SNIFFER, 1.0),
-		MOOSHROOM(EntityTypes.MOOSHROOM, 1.3),
-		CAMEL(EntityTypes.CAMEL, 1.0),
-		ARMADILLO(EntityTypes.ARMADILLO, 4.0),
-		POLAR_BEAR(EntityTypes.POLAR_BEAR, 1.0),
-		GOAT(EntityTypes.GOAT, 2.0),
-		LLAMA(EntityTypes.LLAMA, 1.2),
-		PANDA(EntityTypes.PANDA, 1.2),
-		PIG(EntityTypes.PIG, 1.8),
-		FOX(EntityTypes.FOX, 2.5),
-		WOLF(EntityTypes.WOLF, 2.2),
-		FROG(EntityTypes.FROG, 3.0),
-		TURTLE(EntityTypes.TURTLE, 3.0);
+		HORSE(EntityTypes.HORSE, 1.0, Kind.GROUND),
+		HOGLIN(EntityTypes.HOGLIN, 1.0, Kind.GROUND),
+		SKELETON_HORSE(EntityTypes.SKELETON_HORSE, 1.0, Kind.GROUND),
+		AXOLOTL(EntityTypes.AXOLOTL, 3.5, Kind.GROUND),
+		SNIFFER(EntityTypes.SNIFFER, 1.0, Kind.GROUND),
+		MOOSHROOM(EntityTypes.MOOSHROOM, 1.3, Kind.GROUND),
+		CAMEL(EntityTypes.CAMEL, 1.0, Kind.GROUND),
+		ARMADILLO(EntityTypes.ARMADILLO, 4.0, Kind.GROUND),
+		POLAR_BEAR(EntityTypes.POLAR_BEAR, 1.0, Kind.GROUND),
+		GOAT(EntityTypes.GOAT, 2.0, Kind.GROUND),
+		LLAMA(EntityTypes.LLAMA, 1.2, Kind.GROUND),
+		PANDA(EntityTypes.PANDA, 1.2, Kind.GROUND),
+		PIG(EntityTypes.PIG, 1.8, Kind.GROUND),
+		FOX(EntityTypes.FOX, 2.5, Kind.GROUND),
+		WOLF(EntityTypes.WOLF, 2.2, Kind.GROUND),
+		FROG(EntityTypes.FROG, 3.0, Kind.GROUND),
+		TURTLE(EntityTypes.TURTLE, 3.0, Kind.GROUND),
+		STRIDER(EntityTypes.STRIDER, 1.5, Kind.FLUID),
+		NAUTILUS(EntityTypes.NAUTILUS, 1.6, Kind.FLUID),
+		HAPPY_GHAST(EntityTypes.HAPPY_GHAST, 1.0, Kind.FLYING),
+		BEE(EntityTypes.BEE, 4.0, Kind.FLYING),
+		PARROT(EntityTypes.PARROT, 4.0, Kind.FLYING),
+		ALLAY(EntityTypes.ALLAY, 3.5, Kind.FLYING),
+		BAT(EntityTypes.BAT, 4.0, Kind.FLYING),
+		/** A baby happy ghast, grown a little: what flies anywhere nothing else suits. */
+		GHASTLING(EntityTypes.HAPPY_GHAST, 2.0, Kind.FLYING);
 
 		final EntityType<?> type;
 		final double scale;
+		final Kind kind;
 
-		Theme(EntityType<?> type, double scale) {
+		Theme(EntityType<?> type, double scale, Kind kind) {
 			this.type = type;
 			this.scale = scale;
+			this.kind = kind;
 		}
 
-		/** Ground under them changing - into water, off a cliff - swaps sooner than scenery does. */
-		boolean substrate() {
-			return this == HAPPY_GHAST || this == STRIDER || this == NAUTILUS;
+		boolean baby() {
+			return this == GHASTLING;
 		}
 	}
 
 	static final class Ride {
 		Mob mount;
+		/** What the mount under them is; {@link #theme} is what it should be. */
+		Theme ridden;
 		Theme theme;
 		Theme pending;
 		int pendingTicks;
 		double speed;
 		Vec3 at;
 		float yaw;
+		/** Jumped rather than travelled this tick: no easing up or down, and the land suits at once. */
+		boolean warped;
+		float lastYaw = Float.NaN;
+		float lastPitch;
+		float nudgeYaw;
+		float nudgePitch;
+		int stillTicks;
 	}
 
 	/** On every mount, so one left in the world by a crash is recognised and cleared on load. */
@@ -104,115 +134,178 @@ public final class Rides {
 	private static final double CATCH_UP = 0.15;
 	/** Further behind than this along the trail and the ride skips ahead rather than racing. */
 	private static final double SNAP = 96;
+	/** Two crumbs this far apart were a teleport, a pearl or a respawn: jumped, not flown through rock. */
+	private static final double WARP = 12;
+	/** A skip further than this takes the rider by teleport, so their game loads where they land. */
+	private static final double FAR_SKIP = 32;
 	private static final int SCENERY_TICKS = 20;
 	private static final int SUBSTRATE_TICKS = 6;
-	/** A share of the way back to straight ahead, each tick: slow enough to look around in. */
-	private static final float VIEW_RETURN = 0.04F;
-	private static final float VIEW_PITCH = 5F;
+	/** Two seconds of the rider not moving their view, and it starts to drift round to the leader. */
+	private static final int LOOK_IDLE = 40;
+	/** A share of the way round to the leader each tick, and at most this many degrees a tick. */
+	private static final float VIEW_RETURN = 0.06F;
+	private static final float VIEW_STEP = 2F;
+	/** A turn of the view bigger than the drift could account for is the rider looking around. */
+	private static final float LOOKING = 3F;
 
 	public static boolean isMount(Entity entity) {
 		return live.contains(entity.getUUID()) || entity.entityTags().contains(TAG);
 	}
 
-	/** One frame of being carried behind the leader. */
-	static void carry(Tethers.Tether tether, ServerPlayer follower, ServerPlayer leader, int place) {
+	/**
+	 * One frame of being carried behind the leader. {@code waiting}: the leader is dead or
+	 * spectating, and the ride holds still, rider in the saddle, until they are back.
+	 */
+	static void carry(Tethers.Tether tether, ServerPlayer follower, ServerPlayer leader, int place,
+			double leaderSpeed, boolean waiting) {
 		Ride ride = tether.carriage;
 		if (ride == null) {
 			ride = tether.carriage = new Ride();
 			ride.at = follower.position();
 			ride.yaw = follower.getYRot();
 		}
+		ride.warped = false;
+		Vec3 before = ride.at;
 
-		if (follower.level() != leader.level()) {
-			Tethers.Crumb portal = tether.portal;
-			boolean atPortal = portal == null || portal.level() != follower.level().dimension()
-				|| portal.at().distanceTo(ride.at) <= 1.5;
-			if (atPortal) {
-				cross(tether, ride, follower, leader);
-				return;
+		if (!waiting) {
+			if (follower.level() != leader.level()) {
+				Tethers.Crumb portal = tether.portal;
+				boolean atPortal = portal == null || portal.level() != follower.level().dimension()
+					|| portal.at().distanceTo(ride.at) <= 1.5;
+				if (atPortal) cross(tether, ride, follower, leader);
 			}
+			travel(tether, ride, follower, leader, place, leaderSpeed);
 		}
 
-		Vec3 aheadPoint = ahead(tether, ride, follower, leader);
-		Theme wanted = theme(follower.level(), aheadPoint, standableAhead(tether, follower));
-		if (ride.theme == null) ride.theme = wanted;
+		Tethers.Crumb next = nextHere(tether, follower.level().dimension());
+		Vec3 aheadPoint = next != null ? next.at() : ride.at;
+		Theme wanted = theme(follower.level(), aheadPoint, next == null || next.standable(), next != null && next.aloft());
+		if (ride.theme == null || ride.warped) ride.theme = wanted;
 		if (wanted != ride.theme) {
 			if (wanted != ride.pending) {
 				ride.pending = wanted;
 				ride.pendingTicks = 0;
 			}
-			if (++ride.pendingTicks >= (wanted.substrate() || ride.theme.substrate() ? SUBSTRATE_TICKS : SCENERY_TICKS)) {
+			boolean quick = wanted.kind != Kind.GROUND || ride.theme.kind != Kind.GROUND;
+			if (++ride.pendingTicks >= (quick ? SUBSTRATE_TICKS : SCENERY_TICKS)) {
 				ride.theme = wanted;
 				ride.pending = null;
-				discard(ride, follower);
 			}
 		} else {
 			ride.pending = null;
 		}
 
-		if (ride.mount == null || ride.mount.isRemoved() || follower.getVehicle() != ride.mount) {
-			mount(ride, follower);
-			if (ride.mount == null) return;
-		}
-
-		boolean together = follower.level() == leader.level();
-		double gap = 2.5 + ride.mount.getBbWidth() + 1.5 * place;
-		double behind = together ? behind(tether, ride, follower, leader) : Double.MAX_VALUE;
-		if (together && behind > SNAP) {
-			skipAhead(tether, ride, follower, leader, gap);
-			mount(ride, follower);
-			if (ride.mount == null) return;
-			behind = behind(tether, ride, follower, leader);
-		}
-
-		double wantedSpeed = together ? Math.clamp((behind - gap) * CATCH_UP, 0, FASTEST) : FASTEST;
-		ride.speed += Math.clamp(wantedSpeed - ride.speed, -SLOW_DOWN, SPEED_UP);
-		double budget = together ? Math.min(ride.speed, Math.max(0, behind - gap)) : ride.speed;
-		Vec3 before = ride.at;
-		advance(tether, ride, follower, leader, budget, together);
-
 		Vec3 moved = ride.at.subtract(before);
-		if (moved.horizontalDistanceSqr() > 1.0E-4) {
-			ride.yaw = (float) (Mth.atan2(-moved.x, moved.z) * Mth.RAD_TO_DEG);
+		if (!ride.warped && moved.horizontalDistanceSqr() > 1.0E-4) {
+			// Turned toward where it is going a little at a time: a wobbly trail is not a wobbly ride.
+			float heading = (float) (Mth.atan2(-moved.x, moved.z) * Mth.RAD_TO_DEG);
+			ride.yaw = Mth.rotLerp(0.25F, ride.yaw, heading);
+		}
+
+		ServerLevel level = follower.level();
+		double pathY = ride.theme.kind == Kind.GROUND ? floor(level, ride.at) : ride.at.y;
+		boolean fresh = ride.mount == null || ride.mount.isRemoved() || ride.ridden != ride.theme
+			|| ride.mount.level() != level;
+		if (fresh) {
+			mount(ride, follower, pathY);
+			if (ride.mount == null) return;
+		} else if (follower.getVehicle() != ride.mount) {
+			follower.startRiding(ride.mount, true, false);
 		}
 
 		Mob mount = ride.mount;
 		// Up and down eased, so a leader hopping along does not shake the rider about.
-		double smoothing = ride.theme == Theme.HAPPY_GHAST ? 0.15 : 0.35;
-		double pathY = ride.theme.substrate() ? ride.at.y : floor(follower.level(), ride.at);
-		double y = mount.getY() + (pathY - mount.getY()) * smoothing;
+		double smoothing = ride.theme.kind == Kind.FLYING ? 0.2 : 0.35;
+		double y = fresh || ride.warped ? pathY : mount.getY() + (pathY - mount.getY()) * smoothing;
 		mount.snapTo(ride.at.x, y, ride.at.z, ride.yaw, 0);
 		mount.setYBodyRot(ride.yaw);
 		mount.setYHeadRot(ride.yaw);
 		mount.setDeltaMovement(Vec3.ZERO);
 		mount.clearFire();
-		mount.positionRider(follower);
+		if (mount instanceof AgeableMob young && ride.theme.baby()) young.setAge(AgeableMob.BABY_START_AGE);
+		if (follower.getVehicle() == mount) mount.positionRider(follower);
 
 		follower.setAirSupply(follower.getMaxAirSupply());
 		follower.clearFire();
 		follower.resetFallDistance();
-		lookAhead(follower, ride.yaw);
+		look(ride, follower, leader, waiting);
 	}
 
-	/** The view eased back toward the way ahead: never seized, only drawn. */
-	private static void lookAhead(ServerPlayer follower, float yaw) {
-		float turn = Mth.wrapDegrees(yaw - follower.getYRot());
-		float tilt = VIEW_PITCH - follower.getXRot();
-		if (Math.abs(turn) < 0.5F && Math.abs(tilt) < 0.5F) return;
-		follower.connection.send(new ClientboundPlayerRotationPacket(turn * VIEW_RETURN, true, tilt * VIEW_RETURN, true));
+	/** Along the trail toward the leader, at a speed that eases up and down, or a jump where it must. */
+	private static void travel(Tethers.Tether tether, Ride ride, ServerPlayer follower, ServerPlayer leader,
+			int place, double leaderSpeed) {
+		boolean together = follower.level() == leader.level();
+		double width = ride.mount != null ? ride.mount.getBbWidth() : 1.4;
+		double gap = 2.5 + width + 1.5 * place;
+		if (together) {
+			dropOtherSide(tether, follower.level().dimension());
+			Tethers.Crumb next = tether.trail.peekFirst();
+			Vec3 toward = next != null ? next.at() : leader.position();
+			if (behind(tether, ride, follower, leader) > SNAP || ride.at.distanceTo(toward) > WARP) {
+				skipAhead(tether, ride, follower, leader, gap);
+			}
+		}
+		double behind = together ? behind(tether, ride, follower, leader) : Double.MAX_VALUE;
+		// Never slower than the leader can go: an elytra is not left behind by a horse.
+		double fastest = Math.max(FASTEST, leaderSpeed * 1.3 + 0.2);
+		double wantedSpeed = together ? Math.clamp((behind - gap) * CATCH_UP, 0, fastest) : fastest;
+		double up = Math.max(SPEED_UP, fastest * 0.05);
+		double down = Math.max(SLOW_DOWN, ride.speed * 0.2);
+		ride.speed += Math.clamp(wantedSpeed - ride.speed, -down, up);
+		double budget = together ? Math.min(ride.speed, Math.max(0, behind - gap)) : ride.speed;
+		advance(tether, ride, follower, leader, budget, together);
 	}
 
-	/** The next point along, which is what the ride should already look like it belongs to. */
-	private static Vec3 ahead(Tethers.Tether tether, Ride ride, ServerPlayer follower, ServerPlayer leader) {
-		if (follower.level() != leader.level() && tether.portal != null) return tether.portal.at();
-		Tethers.Crumb next = tether.trail.peekFirst();
-		if (next != null && next.level() == follower.level().dimension()) return next.at();
-		return follower.level() == leader.level() ? leader.position() : ride.at;
+	/**
+	 * The view drawn round to the leader while the rider leaves it be: never seized, only drawn,
+	 * and let go the moment they look somewhere themselves. Turns are sent as small nudges on
+	 * top of wherever the view is, so they never undo a move the rider has just made.
+	 */
+	private static void look(Ride ride, ServerPlayer follower, ServerPlayer leader, boolean waiting) {
+		float yaw = follower.getYRot();
+		float pitch = follower.getXRot();
+		if (!Float.isNaN(ride.lastYaw)) {
+			float turned = Mth.wrapDegrees(yaw - ride.lastYaw);
+			float tilted = pitch - ride.lastPitch;
+			boolean looking = Math.abs(turned - ride.nudgeYaw) > LOOKING || Math.abs(tilted - ride.nudgePitch) > LOOKING;
+			ride.stillTicks = looking ? 0 : ride.stillTicks + 1;
+		}
+		ride.lastYaw = yaw;
+		ride.lastPitch = pitch;
+		ride.nudgeYaw = 0;
+		ride.nudgePitch = 0;
+		if (ride.stillTicks < LOOK_IDLE) return;
+
+		float wantYaw = ride.yaw;
+		float wantPitch = 5F;
+		if (!waiting && leader.level() == follower.level()) {
+			Vec3 to = leader.getEyePosition().subtract(follower.getEyePosition());
+			double across = to.horizontalDistance();
+			if (across > 1.5) {
+				wantYaw = (float) (Mth.atan2(-to.x, to.z) * Mth.RAD_TO_DEG);
+				wantPitch = Math.clamp((float) (-Mth.atan2(to.y, across) * Mth.RAD_TO_DEG), -50F, 50F);
+			}
+		}
+		float turn = Mth.wrapDegrees(wantYaw - yaw);
+		float tilt = wantPitch - pitch;
+		float stepYaw = Math.abs(turn) < 1F ? 0 : Math.clamp(turn * VIEW_RETURN, -VIEW_STEP, VIEW_STEP);
+		float stepPitch = Math.abs(tilt) < 1F ? 0 : Math.clamp(tilt * VIEW_RETURN, -VIEW_STEP, VIEW_STEP);
+		if (stepYaw == 0 && stepPitch == 0) return;
+		ride.nudgeYaw = stepYaw;
+		ride.nudgePitch = stepPitch;
+		follower.connection.send(new ClientboundPlayerRotationPacket(stepYaw, true, stepPitch, true));
 	}
 
-	private static boolean standableAhead(Tethers.Tether tether, ServerPlayer follower) {
-		Tethers.Crumb next = tether.trail.peekFirst();
-		return next == null || next.level() != follower.level().dimension() || next.standable();
+	private static Tethers.Crumb nextHere(Tethers.Tether tether, ResourceKey<Level> here) {
+		for (Tethers.Crumb crumb : tether.trail) {
+			if (crumb.level() == here) return crumb;
+		}
+		return null;
+	}
+
+	/** Left over from the other side of a portal: behind them now. */
+	private static void dropOtherSide(Tethers.Tether tether, ResourceKey<Level> here) {
+		while (!tether.trail.isEmpty() && tether.trail.peekFirst().level() != here) tether.trail.pollFirst();
 	}
 
 	/** Along the trail, not as the crow flies: how far the ride still has to go to reach the leader. */
@@ -228,7 +321,7 @@ public final class Rides {
 		return total + from.distanceTo(leader.position());
 	}
 
-	/** Spend this much distance walking the trail, letting go of each crumb as it is reached. */
+	/** Spend this much distance going along the trail, letting go of each crumb as it is reached. */
 	private static void advance(Tethers.Tether tether, Ride ride, ServerPlayer follower, ServerPlayer leader,
 			double budget, boolean together) {
 		ResourceKey<Level> here = follower.level().dimension();
@@ -242,7 +335,6 @@ public final class Rides {
 				next = tether.portal.at();
 			} else {
 				if (crumb != null) {
-					// Left over from the other side of a portal; behind them now.
 					tether.trail.pollFirst();
 					continue;
 				}
@@ -261,7 +353,11 @@ public final class Rides {
 		}
 	}
 
-	/** Far behind: on along the trail to a few lengths behind the leader, in one go. */
+	/**
+	 * Far behind, or the trail jumps: on to a few lengths behind the leader in one go. Near, the
+	 * creature simply goes there with its rider on; far, the rider is teleported, so their game
+	 * loads the place, and a fresh creature meets them.
+	 */
 	private static void skipAhead(Tethers.Tether tether, Ride ride, ServerPlayer follower, ServerPlayer leader, double gap) {
 		ResourceKey<Level> here = follower.level().dimension();
 		Vec3 landing = null;
@@ -276,19 +372,28 @@ public final class Rides {
 				break;
 			}
 		}
-		if (landing == null) landing = leader.position();
+		if (landing == null) {
+			// No trail to land on, as when just started or just respawned: behind where they face.
+			Vec3 facing = leader.getLookAngle().multiply(1, 0, 1);
+			Vec3 back = facing.lengthSqr() < 1.0E-4 ? Vec3.ZERO : facing.normalize().scale(-gap);
+			landing = leader.position().add(back);
+		}
 		while (tether.trail.size() > keep) tether.trail.pollFirst();
+		boolean far = ride.at.distanceTo(landing) > FAR_SKIP;
 		ride.at = landing;
 		ride.speed = 0;
-		discard(ride, follower);
-		// The rider moved there first, so the new mount is spawned where their game already is.
-		follower.teleportTo(follower.level(), landing.x, landing.y, landing.z, Set.<Relative>of(),
-			follower.getYRot(), follower.getXRot(), false);
+		ride.warped = true;
+		if (far) {
+			discard(ride, follower);
+			follower.teleportTo(follower.level(), landing.x, landing.y, landing.z, Set.<Relative>of(),
+				follower.getYRot(), follower.getXRot(), false);
+		}
 	}
 
 	/**
 	 * After the leader through a portal, carried across with them. The creature cannot go through
-	 * with a rider, so it stays behind, and a fresh one suited to the other side meets them there.
+	 * with a rider, so it stays behind, and a fresh one suited to the other side meets them there
+	 * the same tick.
 	 */
 	private static void cross(Tethers.Tether tether, Ride ride, ServerPlayer follower, ServerPlayer leader) {
 		discard(ride, follower);
@@ -307,28 +412,29 @@ public final class Rides {
 			follower.getYRot(), follower.getXRot(), false);
 		follower.resetFallDistance();
 		ride.at = landing;
-		ride.theme = null;
 		ride.speed = 0;
+		ride.warped = true;
 		tether.portal = null;
 	}
 
-	private static void mount(Ride ride, ServerPlayer follower) {
-		discard(ride, follower);
+	/** The rider onto a fresh creature, then the old one away: never a tick on foot between. */
+	private static void mount(Ride ride, ServerPlayer follower, double y) {
 		ServerLevel level = follower.level();
-		if (ride.theme == null) ride.theme = theme(level, ride.at, true);
 		Entity made = ride.theme.type.create(level, EntitySpawnReason.TRIGGERED);
 		if (!(made instanceof Mob mob)) {
 			if (made != null) made.discard();
 			Main.LOGGER.warn("[{}] {} could not be made to ride", Main.MOD_ID, ride.theme);
 			return;
 		}
-		mob.snapTo(ride.at.x, ride.at.y, ride.at.z, ride.yaw, 0);
+		mob.snapTo(ride.at.x, y, ride.at.z, ride.yaw, 0);
 		mob.setNoAi(true);
 		mob.setNoGravity(true);
 		mob.noPhysics = true;
 		mob.setPermanentlyInvulnerable(true);
+		mob.setPersistenceRequired();
 		mob.addTag(TAG);
-		if (mob instanceof AgeableMob young) young.setAge(0);
+		if (mob instanceof AgeableMob young) young.setAge(ride.theme.baby() ? AgeableMob.BABY_START_AGE : 0);
+		if (mob instanceof Bat bat) bat.setResting(false);
 		AttributeInstance scale = mob.getAttribute(Attributes.SCALE);
 		if (scale != null) scale.setBaseValue(ride.theme.scale);
 		// Known before it is added: adding it is what fires the load event that clears strays.
@@ -343,14 +449,24 @@ public final class Rides {
 			mob.discard();
 			return;
 		}
+		Mob old = ride.mount;
 		ride.mount = mob;
-		level.sendParticles(ParticleTypes.POOF, ride.at.x, ride.at.y + 0.5, ride.at.z, 12, 0.6, 0.4, 0.6, 0.02);
-		level.playSound(null, ride.at.x, ride.at.y, ride.at.z, SoundEvents.CHICKEN_EGG, SoundSource.PLAYERS, 0.7F, 1.4F);
+		ride.ridden = ride.theme;
+		if (old != null) {
+			live.remove(old.getUUID());
+			if (!old.isRemoved()) {
+				old.ejectPassengers();
+				old.discard();
+			}
+		}
+		level.sendParticles(ParticleTypes.POOF, ride.at.x, y + 0.5, ride.at.z, 12, 0.6, 0.4, 0.6, 0.02);
+		level.playSound(null, ride.at.x, y, ride.at.z, SoundEvents.CHICKEN_EGG, SoundSource.PLAYERS, 0.7F, 1.4F);
 	}
 
 	private static void discard(Ride ride, ServerPlayer follower) {
 		Mob mount = ride.mount;
 		ride.mount = null;
+		ride.ridden = null;
 		if (mount == null) return;
 		live.remove(mount.getUUID());
 		if (follower.getVehicle() == mount) follower.stopRiding();
@@ -361,9 +477,9 @@ public final class Rides {
 	}
 
 	/**
-	 * The ride over, however it ended: off the creature and set down somewhere that holds. Where
-	 * the ride was over lava, water or a drop, that is beside the leader instead, or the latest
-	 * place they stood; where there is neither, a slow fall and a fireproof few seconds.
+	 * The ride over: off the creature and set down somewhere that holds. Where the ride was over
+	 * lava, water or a drop, that is beside the leader instead, or the latest place they stood;
+	 * where there is neither, a slow fall and a fireproof few seconds.
 	 */
 	static void release(Tethers.Tether tether, ServerPlayer follower, ServerPlayer leader) {
 		Ride ride = tether.carriage;
@@ -372,7 +488,7 @@ public final class Rides {
 		discard(ride, follower);
 		if (follower.isRemoved()) return;
 		Vec3 spot = null;
-		if (leader != null && leader.level() == follower.level()) {
+		if (leader != null && leader.level() == follower.level() && leader.isAlive()) {
 			if (leader.onGround() && !leader.isPassenger()) spot = leader.position();
 			else {
 				for (Iterator<Tethers.Crumb> it = tether.trail.descendingIterator(); it.hasNext(); ) {
@@ -402,17 +518,17 @@ public final class Rides {
 		}
 	}
 
-	/** What the ground at this point calls for: what it is made of first, then where it is. */
-	static Theme theme(ServerLevel level, Vec3 at, boolean standable) {
+	/**
+	 * What the trail at this point calls for: inside water or lava first, then in the air, then
+	 * what the ground is made of, then where it is.
+	 */
+	static Theme theme(ServerLevel level, Vec3 at, boolean standable, boolean aloft) {
 		BlockPos pos = BlockPos.containing(at);
-		if (level.getFluidState(pos).is(FluidTags.LAVA) || level.getFluidState(pos.below()).is(FluidTags.LAVA)) {
-			return Theme.STRIDER;
-		}
-		if (level.getFluidState(pos).is(FluidTags.WATER)
-			|| (!standable && level.getFluidState(pos.below()).is(FluidTags.WATER))) {
-			return Theme.NAUTILUS;
-		}
-		if (!standable && overDrop(level, pos)) return Theme.HAPPY_GHAST;
+		if (level.getFluidState(pos).is(FluidTags.LAVA)) return Theme.STRIDER;
+		if (level.getFluidState(pos).is(FluidTags.WATER)) return Theme.NAUTILUS;
+		if (aloft || (!standable && overDrop(level, pos))) return flying(level, pos);
+		if (level.getFluidState(pos.below()).is(FluidTags.LAVA)) return Theme.STRIDER;
+		if (!standable && level.getFluidState(pos.below()).is(FluidTags.WATER)) return Theme.NAUTILUS;
 
 		Holder<Biome> biome = level.getBiome(pos);
 		if (biome.is(BiomeTags.IS_NETHER)) {
@@ -423,8 +539,7 @@ public final class Rides {
 		if (biome.is(BiomeTags.IS_END)) return Theme.HAPPY_GHAST;
 
 		if (biome.is(Biomes.LUSH_CAVES)) return Theme.AXOLOTL;
-		boolean underground = pos.getY() < level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, pos.getX(), pos.getZ()) - 4;
-		if (biome.is(Biomes.DRIPSTONE_CAVES) || biome.is(Biomes.DEEP_DARK) || underground) return Theme.SNIFFER;
+		if (biome.is(Biomes.DRIPSTONE_CAVES) || biome.is(Biomes.DEEP_DARK) || underground(level, pos)) return Theme.SNIFFER;
 
 		if (biome.is(Biomes.MUSHROOM_FIELDS)) return Theme.MOOSHROOM;
 		if (biome.is(Biomes.DESERT)) return Theme.CAMEL;
@@ -437,10 +552,32 @@ public final class Rides {
 		if (biome.is(Biomes.DARK_FOREST)) return Theme.WOLF;
 		if (biome.is(BiomeTags.IS_TAIGA)) return Theme.FOX;
 		if (biome.is(BiomeTags.IS_BEACH)) return Theme.TURTLE;
-		if (biome.is(BiomeTags.IS_SAVANNA) || biome.is(Biomes.WINDSWEPT_HILLS)
-			|| biome.is(Biomes.WINDSWEPT_GRAVELLY_HILLS) || biome.is(Biomes.WINDSWEPT_FOREST)) return Theme.LLAMA;
+		if (windswept(biome) || biome.is(BiomeTags.IS_SAVANNA)) return Theme.LLAMA;
 		if (biome.is(BiomeTags.IS_MOUNTAIN)) return Theme.GOAT;
 		return Theme.HORSE;
+	}
+
+	/** Something that flies, and suits where it flies. */
+	private static Theme flying(ServerLevel level, BlockPos pos) {
+		Holder<Biome> biome = level.getBiome(pos);
+		if (biome.is(BiomeTags.IS_NETHER) || biome.is(BiomeTags.IS_END)) return Theme.HAPPY_GHAST;
+		if (biome.is(Biomes.LUSH_CAVES) || biome.is(Biomes.DRIPSTONE_CAVES) || biome.is(Biomes.DEEP_DARK)
+			|| underground(level, pos)) return Theme.BAT;
+		if (biome.is(BiomeTags.IS_JUNGLE)) return Theme.PARROT;
+		if (biome.is(Biomes.FLOWER_FOREST) || biome.is(Biomes.MEADOW) || biome.is(Biomes.SUNFLOWER_PLAINS)
+			|| biome.is(Biomes.CHERRY_GROVE)) return Theme.BEE;
+		if (biome.value().coldEnoughToSnow(pos, level.getSeaLevel()) || biome.is(BiomeTags.IS_MOUNTAIN)
+			|| windswept(biome)) return Theme.ALLAY;
+		return Theme.GHASTLING;
+	}
+
+	private static boolean windswept(Holder<Biome> biome) {
+		return biome.is(Biomes.WINDSWEPT_HILLS) || biome.is(Biomes.WINDSWEPT_GRAVELLY_HILLS)
+			|| biome.is(Biomes.WINDSWEPT_FOREST);
+	}
+
+	private static boolean underground(ServerLevel level, BlockPos pos) {
+		return pos.getY() < level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, pos.getX(), pos.getZ()) - 4;
 	}
 
 	/**

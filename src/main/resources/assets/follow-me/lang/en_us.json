@@ -1,6 +1,4 @@
 {
-	"follow-me.ask": "%s asks to follow you. ",
-	"follow-me.ask-lead": "%s asks you to follow them. ",
-	"follow-me.ask-ride": "%s asks to ride along behind you. ",
-	"follow-me.ask-lead-ride": "%s offers you a ride along behind them. You will not be able to steer or get off until it ends. "
+	"follow-me.ask": "%s asks to ride along behind you. ",
+	"follow-me.ask-lead": "%s offers you a ride along behind them. You will not steer, and stay on until one of you stops it. "
 }

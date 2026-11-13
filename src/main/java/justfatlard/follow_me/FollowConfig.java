@@ -17,7 +17,6 @@ public final class FollowConfig {
 	private static final Path CONFIG_PATH = FabricLoader.getInstance().getConfigDir().resolve(Main.MOD_ID + ".properties");
 
 	private static int requestSeconds = 60;
-	private static int slack = 4;
 	private static int leash = 32;
 
 	private static final String DEFAULT_CONFIG = """
@@ -27,12 +26,8 @@ public final class FollowConfig {
 			# How long a request to follow, or to be followed, stands before it lapses, in seconds.
 			request_seconds=60
 
-			# How far a follower may stray from the one they follow, in blocks, before being pulled
-			# back in line. Inside this they walk and look wherever they like.
-			slack=4
-
-			# How far a follower can fall behind, in blocks, before they have lost the one they
-			# follow and it ends. Also how close they must be to start.
+			# How close, in blocks, a follower must be to the one they follow for it to start.
+			# Once started nothing ends it but either of them stopping it or leaving.
 			leash=32
 			""";
 
@@ -47,7 +42,6 @@ public final class FollowConfig {
 				props.load(reader);
 			}
 			requestSeconds = number(props, "request_seconds", 60, 10, 600);
-			slack = number(props, "slack", 4, 2, 16);
 			leash = number(props, "leash", 32, 16, 128);
 		} catch (IOException e) {
 			Main.LOGGER.error("[{}] Could not read config, using defaults: {}", Main.MOD_ID, e.toString());
@@ -65,10 +59,6 @@ public final class FollowConfig {
 
 	public static int requestSeconds() {
 		return requestSeconds;
-	}
-
-	public static int slack() {
-		return slack;
 	}
 
 	public static int leash() {
@@ -102,14 +92,8 @@ public final class FollowConfig {
 				requestSeconds = value;
 				store("request_seconds", String.valueOf(value));
 			});
-		group.number("slack", "Room to wander, blocks", 2, 16, 1, 4)
-			.describe("How far a follower strays before being pulled back in line")
-			.backedBy(player -> slack, (player, value) -> {
-				slack = value;
-				store("slack", String.valueOf(value));
-			});
-		group.number("leash", "Lost after, blocks", 16, 128, 4, 32)
-			.describe("How far behind a follower can fall before it ends; also how close to start")
+		group.number("leash", "Start within, blocks", 16, 128, 4, 32)
+			.describe("How close a follower must be to the one they follow for it to start")
 			.backedBy(player -> leash, (player, value) -> {
 				leash = value;
 				store("leash", String.valueOf(value));
