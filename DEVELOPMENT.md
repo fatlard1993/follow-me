@@ -18,4 +18,6 @@ Install server-side alongside its declared dependencies (see `fabric.mod.json`);
 
 `Rides.java` carries the follower along it: a mob with no AI, no gravity and no physics, spawned unsaddled so the rider never controls it, snapped along the trail each tick by the server. A swap spawns the new mob and seats the rider on it before the old one is discarded. Trail gaps over 12 blocks (teleports, respawns) are jumped rather than flown through; skips over 32 blocks teleport the rider so their client loads the landing. The view drift sends small relative `ClientboundPlayerRotationPacket` nudges, and stops whenever the rider's own rotation changes by more than the last nudge can explain.
 
+A tether with no leader is a wanderer: `Rides.wander` moves the ride from the rider's own movement keys (`ServerPlayer.getLastClientInput()`, sent by the client even while seated) instead of along a trail, with its own small collision checks against blocks, then seats it through the same `settle` as a carried ride.
+
 `mixin/PlayerMixin` keeps sneaking from dismounting; Fabric's `ALLOW_DAMAGE` keeps rider and mount unhurt; mounts carry the `follow-me.ride` entity tag so any left behind by a crash are discarded when their chunk loads.

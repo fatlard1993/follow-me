@@ -29,6 +29,7 @@ import net.minecraft.world.entity.Relative;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ambient.Bat;
+import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
@@ -122,6 +123,13 @@ public final class Rides {
 		float nudgeYaw;
 		float nudgePitch;
 		int stillTicks;
+		/** Steered by its rider rather than carried behind a leader: see {@link #wander}. */
+		boolean steered;
+		Vec3 velocity = Vec3.ZERO;
+		/** Steered up off the ground, or carried off an edge: flying until it comes down to land. */
+		boolean aloft;
+		/** The latest place a steered ride stood on solid ground, for setting the rider down. */
+		Vec3 lastStood;
 	}
 
 	/** On every mount, so one left in the world by a crash is recognised and cleared on load. */
@@ -140,6 +148,18 @@ public final class Rides {
 	private static final double FAR_SKIP = 32;
 	private static final int SCENERY_TICKS = 20;
 	private static final int SUBSTRATE_TICKS = 6;
+	/** A steered ride's pace, in blocks a tick: a trot, a gallop when sprinting, and up or down. */
+	private static final double WANDER_SPEED = 0.35;
+	private static final double WANDER_SPRINT = 0.7;
+	private static final double WANDER_CLIMB = 0.3;
+	/** How much of the way to the wanted pace each tick: picks up gently, stops a little quicker. */
+	private static final double WANDER_START = 0.15;
+	private static final double WANDER_STOP = 0.25;
+	/** What a walking ride steps up without a jump, and how far down it follows a slope before calling it an edge. */
+	private static final double WANDER_STEP = 1.0;
+	private static final int WANDER_REACH = 4;
+	/** Coming down this close over the ground, a steered flier lands. */
+	private static final double WANDER_LAND = 0.6;
 	/** Two seconds of the rider not moving their view, and it starts to drift round to the leader. */
 	private static final int LOOK_IDLE = 40;
 	/** A share of the way round to the leader each tick, and at most this many degrees a tick. */
@@ -165,6 +185,7 @@ public final class Rides {
 			ride.yaw = follower.getYRot();
 		}
 		ride.warped = false;
+		ride.steered = false;
 		Vec3 before = ride.at;
 
 		if (!waiting) {
@@ -180,6 +201,15 @@ public final class Rides {
 		Tethers.Crumb next = nextHere(tether, follower.level().dimension());
 		Vec3 aheadPoint = next != null ? next.at() : ride.at;
 		Theme wanted = theme(follower.level(), aheadPoint, next == null || next.standable(), next != null && next.aloft());
+		if (settle(ride, follower, wanted, before)) look(ride, follower, leader, waiting);
+	}
+
+	/**
+	 * The ride brought round to the creature this place calls for, once it has called for it a
+	 * little while, and set where {@link Ride#at} says, rider on, unharmed. Returns whether the
+	 * rider is seated.
+	 */
+	private static boolean settle(Ride ride, ServerPlayer follower, Theme wanted, Vec3 before) {
 		if (ride.theme == null || ride.warped) ride.theme = wanted;
 		if (wanted != ride.theme) {
 			if (wanted != ride.pending) {
@@ -208,7 +238,7 @@ public final class Rides {
 			|| ride.mount.level() != level;
 		if (fresh) {
 			mount(ride, follower, pathY);
-			if (ride.mount == null) return;
+			if (ride.mount == null) return false;
 		} else if (follower.getVehicle() != ride.mount) {
 			follower.startRiding(ride.mount, true, false);
 		}
@@ -228,7 +258,138 @@ public final class Rides {
 		follower.setAirSupply(follower.getMaxAirSupply());
 		follower.clearFire();
 		follower.resetFallDistance();
-		look(ride, follower, leader, waiting);
+		return true;
+	}
+
+	/**
+	 * Riding behind nobody: the rider steers with their movement keys, the way they look. On the
+	 * ground the ride walks, stepping up a block and down any slope, never into a wall; jump takes
+	 * it up into the air, and off an edge it holds its height rather than falling. Aloft or under
+	 * water, jump climbs and sneak sinks, and it settles back on its feet when it comes down
+	 * near the ground.
+	 */
+	static void wander(Tethers.Tether tether, ServerPlayer rider) {
+		Ride ride = tether.carriage;
+		if (ride == null) {
+			ride = tether.carriage = new Ride();
+			ride.at = rider.position();
+			ride.yaw = rider.getYRot();
+		}
+		ServerLevel level = rider.level();
+		if (!ride.steered) {
+			ride.steered = true;
+			ride.velocity = Vec3.ZERO;
+			ride.aloft = ride.theme != null ? ride.theme.kind == Kind.FLYING : !rider.onGround() && !rider.isInLiquid();
+		}
+		ride.warped = false;
+		Vec3 before = ride.at;
+		steer(level, ride, rider.getLastClientInput(), rider.getYRot());
+		boolean standing = !ride.aloft && !fluid(level, ride.at);
+		if (standing) ride.lastStood = ride.at;
+		settle(ride, rider, theme(level, ride.at, standing, ride.aloft), before);
+	}
+
+	private static void steer(ServerLevel level, Ride ride, Input input, float viewYaw) {
+		double ahead = (input.forward() ? 1 : 0) - (input.backward() ? 1 : 0);
+		double aside = (input.left() ? 1 : 0) - (input.right() ? 1 : 0);
+		Vec3 wish = Vec3.ZERO;
+		if (ahead != 0 || aside != 0) {
+			float sin = Mth.sin(viewYaw * Mth.DEG_TO_RAD);
+			float cos = Mth.cos(viewYaw * Mth.DEG_TO_RAD);
+			wish = new Vec3(-sin * ahead + cos * aside, 0, cos * ahead + sin * aside)
+				.normalize().scale(input.sprint() ? WANDER_SPRINT : WANDER_SPEED);
+		}
+		ride.velocity = ride.velocity.lerp(wish, wish == Vec3.ZERO ? WANDER_STOP : WANDER_START);
+		if (ride.velocity.lengthSqr() < 1.0E-5) ride.velocity = Vec3.ZERO;
+
+		if (!ride.aloft && !fluid(level, ride.at)) {
+			if (!input.jump()) {
+				walk(level, ride);
+				return;
+			}
+			ride.aloft = true;
+		}
+		fly(level, ride, input.jump() ? WANDER_CLIMB : input.shift() ? -WANDER_CLIMB : 0, input.jump());
+	}
+
+	/** Where a walker going on to this column comes to, or null for a wall in the way. */
+	private record Footing(Vec3 at, boolean edge) {}
+
+	private static void walk(ServerLevel level, Ride ride) {
+		Vec3 v = ride.velocity;
+		// Straight on, else along whichever side of the wall it met.
+		for (Vec3 step : v == Vec3.ZERO ? new Vec3[] {Vec3.ZERO}
+				: new Vec3[] {v, new Vec3(v.x, 0, 0), new Vec3(0, 0, v.z)}) {
+			if (step != Vec3.ZERO && step.lengthSqr() < 1.0E-6) continue;
+			Footing footing = footing(level, ride.at.x + step.x, ride.at.y, ride.at.z + step.z);
+			if (footing == null) continue;
+			ride.at = footing.at();
+			// Over a drop it holds its height, and something that flies takes over.
+			if (footing.edge()) ride.aloft = true;
+			return;
+		}
+		ride.velocity = Vec3.ZERO;
+	}
+
+	private static Footing footing(ServerLevel level, double x, double y, double z) {
+		BlockPos top = BlockPos.containing(x, y + WANDER_STEP, z);
+		if (!level.isLoaded(top)) return null;
+		for (int down = 0; down <= WANDER_REACH; down++) {
+			BlockPos pos = top.below(down);
+			if (!level.getFluidState(pos).isEmpty()) return new Footing(new Vec3(x, pos.getY() + 0.5, z), false);
+			var shape = level.getBlockState(pos).getCollisionShape(level, pos);
+			if (shape.isEmpty()) continue;
+			double floor = pos.getY() + shape.max(Direction.Axis.Y);
+			if (floor > y + WANDER_STEP + 0.05 || !open(level, new Vec3(x, floor, z))) return null;
+			return new Footing(new Vec3(x, floor, z), false);
+		}
+		return new Footing(new Vec3(x, y, z), true);
+	}
+
+	private static void fly(ServerLevel level, Ride ride, double climb, boolean rising) {
+		Vec3 v = ride.velocity;
+		boolean moving = v.horizontalDistanceSqr() > 1.0E-6;
+		Vec3[] tries = moving
+			? new Vec3[] {new Vec3(v.x, climb, v.z), new Vec3(v.x, Math.max(climb, 0) + WANDER_STEP, v.z),
+				new Vec3(v.x, climb, 0), new Vec3(0, climb, v.z), new Vec3(0, climb, 0)}
+			: new Vec3[] {new Vec3(0, climb, 0)};
+		boolean moved = false;
+		for (Vec3 step : tries) {
+			Vec3 to = ride.at.add(step);
+			if (step.lengthSqr() < 1.0E-8 || !open(level, to)) continue;
+			ride.at = to;
+			moved = true;
+			break;
+		}
+		if (!moved && moving) ride.velocity = Vec3.ZERO;
+		boolean inFluid = fluid(level, ride.at);
+		// Up out of the water is up in the air, not straight back in at the next step.
+		if (!inFluid) ride.aloft = true;
+		if (rising || inFluid) return;
+		// Close enough over the ground with nobody holding it up: down on its feet.
+		BlockPos below = BlockPos.containing(ride.at.x, ride.at.y - WANDER_LAND, ride.at.z);
+		for (BlockPos pos : new BlockPos[] {BlockPos.containing(ride.at), below}) {
+			var shape = level.getBlockState(pos).getCollisionShape(level, pos);
+			if (shape.isEmpty()) continue;
+			double floor = pos.getY() + shape.max(Direction.Axis.Y);
+			if (floor <= ride.at.y + 0.01 && floor >= ride.at.y - WANDER_LAND) {
+				ride.at = new Vec3(ride.at.x, floor, ride.at.z);
+				ride.aloft = false;
+				return;
+			}
+		}
+	}
+
+	/** Room for a rider here: nothing solid at the creature's feet or a block above, inside the world. */
+	private static boolean open(ServerLevel level, Vec3 at) {
+		BlockPos feet = BlockPos.containing(at);
+		if (feet.getY() <= level.getMinY() || feet.getY() + 1 > level.getMaxY() || !level.isLoaded(feet)) return false;
+		return level.getBlockState(feet).getCollisionShape(level, feet).isEmpty()
+			&& level.getBlockState(feet.above()).getCollisionShape(level, feet.above()).isEmpty();
+	}
+
+	private static boolean fluid(ServerLevel level, Vec3 at) {
+		return !level.getFluidState(BlockPos.containing(at)).isEmpty();
 	}
 
 	/** Along the trail toward the leader, at a speed that eases up and down, or a jump where it must. */
@@ -488,7 +649,12 @@ public final class Rides {
 		discard(ride, follower);
 		if (follower.isRemoved()) return;
 		Vec3 spot = null;
-		if (leader != null && leader.level() == follower.level() && leader.isAlive()) {
+		if (ride.steered) {
+			// Behind nobody: put down where it walked, or back where it last did if not far off.
+			boolean standing = !ride.aloft && !fluid(follower.level(), ride.at);
+			if (standing) spot = ride.at;
+			else if (ride.lastStood != null && ride.lastStood.distanceTo(ride.at) <= FAR_SKIP * 2) spot = ride.lastStood;
+		} else if (leader != null && leader.level() == follower.level() && leader.isAlive()) {
 			if (leader.onGround() && !leader.isPassenger()) spot = leader.position();
 			else {
 				for (Iterator<Tethers.Crumb> it = tether.trail.descendingIterator(); it.hasNext(); ) {

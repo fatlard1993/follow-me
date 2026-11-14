@@ -12,7 +12,8 @@ import net.minecraft.server.level.ServerPlayer;
 
 /**
  * {@code /follow <player>} asks to ride along behind them, {@code /follow lead <player>} offers
- * them a ride behind you, {@code /follow stop} ends either. {@code accept} and {@code deny}
+ * them a ride behind you, {@code /follow nobody} puts you on a ride of your own to steer,
+ * {@code /follow stop} ends any of them. {@code accept} and {@code deny}
  * answer an ask. {@code assign}, for ops, puts players behind a leader without asking.
  */
 public final class FollowCommands {
@@ -28,6 +29,8 @@ public final class FollowCommands {
 				Tethers.stop(context.getSource().getPlayerOrException());
 				return 1;
 			}))
+			.then(Commands.literal("nobody").executes(context ->
+				Tethers.wander(context.getSource().getPlayerOrException()) ? 1 : 0))
 			.then(Commands.literal("lead").then(Commands.argument("player", EntityArgument.player())
 				.executes(context -> pair(context, (self, other) -> Asks.send(self, other, Asks.Way.LEAD)))))
 			.then(Commands.literal("accept").then(Commands.argument("player", EntityArgument.player())
@@ -37,6 +40,7 @@ public final class FollowCommands {
 			.then(Commands.literal("assign")
 				.requires(source -> Commands.LEVEL_GAMEMASTERS.check(source.permissions()))
 				.then(Commands.argument("followers", EntityArgument.players())
+					.then(Commands.literal("nobody").executes(FollowCommands::assignNobody))
 					.then(Commands.argument("leader", EntityArgument.player())
 						.executes(FollowCommands::assign))))
 			.then(Commands.argument("player", EntityArgument.player())
@@ -46,6 +50,18 @@ public final class FollowCommands {
 	private static int pair(CommandContext<CommandSourceStack> context, Pair action) throws CommandSyntaxException {
 		action.run(context.getSource().getPlayerOrException(), EntityArgument.getPlayer(context, "player"));
 		return 1;
+	}
+
+	/** Each one put on a ride of their own to steer, wherever they are. */
+	private static int assignNobody(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+		int started = 0;
+		for (ServerPlayer rider : EntityArgument.getPlayers(context, "followers")) {
+			if (Tethers.wander(rider)) started++;
+		}
+		int count = started;
+		context.getSource().sendSuccess(() -> Component.literal(
+			count + (count == 1 ? " player is" : " players are") + " wandering on a ride of their own"), true);
+		return count;
 	}
 
 	/** Each one put on a ride behind the leader, wherever they are, in the order given. */

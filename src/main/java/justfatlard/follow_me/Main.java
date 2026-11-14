@@ -32,15 +32,18 @@ public class Main implements ModInitializer {
 		PandoricalApi.actionMenus().suggestMenu(MOD_ID + ":follow", "Follow", List.of(
 			ActionMenuApi.Button.runs("minecraft:saddle", "Ride along", "follow {player}"),
 			ActionMenuApi.Button.runs("minecraft:lead", "Give a ride", "follow lead {player}"),
+			ActionMenuApi.Button.runs("minecraft:compass", "Wander", "follow nobody"),
 			ActionMenuApi.Button.runs("minecraft:barrier", "Stop", "follow stop")));
 		PandoricalApi.commandHelp().describe("/follow <player>",
 			"Ask to ride along behind somebody on a creature that suits the land: hands off, and nothing can hurt you.");
 		PandoricalApi.commandHelp().describe("/follow lead <player>",
 			"Offer somebody a ride along behind you. They decide.");
+		PandoricalApi.commandHelp().describe("/follow nobody",
+			"Ride behind nobody: steer it yourself, jump to fly, sneak to land. Still a creature that suits the land, and still nothing can hurt you.");
 		PandoricalApi.commandHelp().describe("/follow stop",
 			"Get off, and stop anybody riding along behind you.");
 		PandoricalApi.commandHelp().describe("/follow assign <players> <leader>",
-			"Ops: put players behind a leader without asking, wherever they are.");
+			"Ops: put players behind a leader without asking, wherever they are. nobody as the leader gives them a ride of their own.");
 
 		CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) ->
 			FollowCommands.register(dispatcher));

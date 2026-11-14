@@ -15,6 +15,17 @@ The follower is sat on a creature that carries them along the leader's own trail
 
 A ride suits a small child well: once the offer is accepted, there is nothing to get wrong and nothing that can hurt them.
 
+## Behind nobody
+
+`/follow nobody` puts you on a ride with nobody to follow, and you steer it. It is the same ride in every other way: the creature suits the land and swaps as it changes, and neither you nor it can be hurt.
+
+- **Movement keys** walk it the way you are looking; sprint gallops. It steps up a block, follows the ground down, and stops at a wall rather than going through it.
+- **Jump** takes it up into the air on a flier; hold it to climb. **Sneak** sinks, and coming down near the ground it lands on its feet. Under water, jump and sneak swim up and down.
+- **Off an edge** it holds its height, as a flier, rather than falling.
+- `/follow stop` gets off, and sets you down where it stood, or where it last stood if that is close by.
+
+Anybody can follow a player who is wandering, and a wanderer can stop and follow somebody without getting off.
+
 ## What carries you
 
 By what is underfoot first, then where you are:
@@ -58,13 +69,14 @@ Either way round, the one who did not ask is the one who answers: a follower agr
 
 - `/follow <player>` asks if you can ride along behind them.
 - `/follow lead <player>` offers them a ride along behind you.
+- `/follow nobody` puts you on a ride of your own to steer (see above).
 - `/follow stop` gets you off, and stops anybody riding behind you. Either of you can end it at any time.
 - `/follow accept <player>` and `/follow deny <player>` answer.
-- `/follow assign <players> <leader>`, for ops, puts one or more players behind a leader without asking, wherever they are. A player already following somebody switches to the new leader without getting off.
+- `/follow assign <players> <leader>`, for ops, puts one or more players behind a leader without asking, wherever they are. A player already following somebody switches to the new leader without getting off. `nobody` as the leader puts them on rides of their own instead.
 
 The ask arrives in the notice tray with buttons to answer it, or as a clickable line in chat for a game that cannot draw the tray. It lapses after a minute. Asking again, either way, takes back the first ask.
 
-There is a **Follow** action menu too, with **Ride along**, **Give a ride** and **Stop**, picking who by face.
+There is a **Follow** action menu too, with **Ride along** and **Give a ride** (picking who by face), **Wander**, and **Stop**.
 
 ## Requirements
 

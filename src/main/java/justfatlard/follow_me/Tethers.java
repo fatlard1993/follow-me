@@ -32,6 +32,7 @@ public final class Tethers {
 
 	static final class Tether {
 		final UUID follower;
+		/** Null for a rider wandering on their own, steering the ride themselves. */
 		final UUID leader;
 		final ArrayDeque<Crumb> trail = new ArrayDeque<>();
 		Vec3 lastLeader;
@@ -44,6 +45,10 @@ public final class Tethers {
 		Tether(UUID follower, UUID leader) {
 			this.follower = follower;
 			this.leader = leader;
+		}
+
+		boolean wandering() {
+			return leader == null;
 		}
 	}
 
@@ -96,19 +101,42 @@ public final class Tethers {
 			Main.say(leader, why);
 			return false;
 		}
-		Tether previous = tethers.remove(follower.getUUID());
-		if (previous != null) {
-			ServerPlayer old = player(follower.level().getServer(), previous.leader);
-			if (old != null && old != leader) Main.say(old, name(follower) + " stopped following you");
-		}
 		Tether tether = new Tether(follower.getUUID(), leader.getUUID());
 		tether.lastLeader = leader.position();
-		// Kept in the saddle: the creature they are on turns to follow the new leader instead.
-		if (previous != null) tether.carriage = previous.carriage;
-		tethers.put(follower.getUUID(), tether);
+		replace(follower, tether);
 		Main.say(follower, "Riding along behind " + name(leader) + " - /follow stop to get off");
 		Main.say(leader, name(follower) + " is riding along behind you");
 		return true;
+	}
+
+	/**
+	 * Behind nobody: on a ride all the same, the creature still suiting the land and nothing able
+	 * to hurt them, but going wherever they steer it. Returns whether it started.
+	 */
+	public static boolean wander(ServerPlayer rider) {
+		if (rider.isSpectator()) {
+			Main.say(rider, "Not while spectating");
+			return false;
+		}
+		Tether previous = tethers.get(rider.getUUID());
+		if (previous != null && previous.wandering()) {
+			Main.say(rider, "Already wandering - /follow stop to get off");
+			return false;
+		}
+		replace(rider, new Tether(rider.getUUID(), null));
+		Main.say(rider, "Wandering - steer with your movement keys, jump to fly, sneak to land, /follow stop to get off");
+		return true;
+	}
+
+	/** This tether in place of any the follower had, kept in the saddle: the creature under them carries on. */
+	private static void replace(ServerPlayer follower, Tether tether) {
+		Tether previous = tethers.remove(follower.getUUID());
+		if (previous != null) {
+			tether.carriage = previous.carriage;
+			ServerPlayer old = previous.wandering() ? null : player(follower.level().getServer(), previous.leader);
+			if (old != null && !old.getUUID().equals(tether.leader)) Main.say(old, name(follower) + " stopped following you");
+		}
+		tethers.put(follower.getUUID(), tether);
 	}
 
 	/** Stop following, and stop being followed: whichever this player is doing, both. */
@@ -120,11 +148,11 @@ public final class Tethers {
 			if (tether.follower.equals(player.getUUID())) {
 				it.remove();
 				any = true;
-				Main.say(player, "Stopped following");
-				ServerPlayer leader = player(server, tether.leader);
+				Main.say(player, tether.wandering() ? "Off the ride" : "Stopped following");
+				ServerPlayer leader = tether.wandering() ? null : player(server, tether.leader);
 				Rides.release(tether, player, leader);
 				if (leader != null) Main.say(leader, name(player) + " stopped following you");
-			} else if (tether.leader.equals(player.getUUID())) {
+			} else if (player.getUUID().equals(tether.leader)) {
 				it.remove();
 				any = true;
 				Main.say(player, "Nobody is following you now");
@@ -140,14 +168,14 @@ public final class Tethers {
 	public static void forget(MinecraftServer server, UUID player) {
 		for (Iterator<Tether> it = tethers.values().iterator(); it.hasNext(); ) {
 			Tether tether = it.next();
-			if (tether.leader.equals(player)) {
+			if (player.equals(tether.leader)) {
 				it.remove();
 				ServerPlayer follower = player(server, tether.follower);
 				Rides.release(tether, follower, player(server, player));
 				if (follower != null) Main.say(follower, "The one you were following left");
 			} else if (tether.follower.equals(player)) {
 				it.remove();
-				Rides.release(tether, player(server, player), player(server, tether.leader));
+				Rides.release(tether, player(server, player), tether.wandering() ? null : player(server, tether.leader));
 			}
 		}
 	}
@@ -155,6 +183,10 @@ public final class Tethers {
 	public static void tick(MinecraftServer server) {
 		Map<UUID, Integer> rank = new HashMap<>();
 		for (Tether tether : List.copyOf(tethers.values())) {
+			if (tether.wandering()) {
+				wanderTick(server, tether);
+				continue;
+			}
 			int place = rank.merge(tether.leader, 1, Integer::sum) - 1;
 			ServerPlayer follower = player(server, tether.follower);
 			ServerPlayer leader = player(server, tether.leader);
@@ -176,6 +208,17 @@ public final class Tethers {
 			else drop(tether, leader);
 			Rides.carry(tether, follower, leader, place, waiting ? 0 : leaderSpeed, waiting);
 		}
+	}
+
+	private static void wanderTick(MinecraftServer server, Tether tether) {
+		ServerPlayer rider = player(server, tether.follower);
+		if (rider == null) return;
+		if (rider.isSpectator() || !rider.isAlive()) {
+			tethers.remove(tether.follower, tether);
+			Rides.release(tether, rider, null);
+			return;
+		}
+		Rides.wander(tether, rider);
 	}
 
 	/** A crumb wherever the leader has got to, and the oldest let go once there are plenty. */
