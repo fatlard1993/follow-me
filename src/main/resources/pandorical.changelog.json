@@ -6,7 +6,7 @@
   "versions": {
     "1.2.1": [
       "Riders are out of the fight: no mob will target someone riding along, and one already after them gives up.",
-      "Riders keep their hands to themselves: they cannot hit anything, hurt anything with what they shoot or throw, or break blocks.",
+      "Riders keep their hands to themselves: they cannot hit anything, shoot, throw, cast a line or break blocks, and a bow drawn before mounting is let down.",
       "Items, arrows, tridents and experience stay on the ground as a rider passes, for whoever is walking."
     ],
     "1.2.0": [

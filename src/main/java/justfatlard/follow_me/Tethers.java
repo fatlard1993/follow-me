@@ -137,6 +137,8 @@ public final class Tethers {
 			if (old != null && !old.getUUID().equals(tether.leader)) Main.say(old, name(follower) + " stopped following you");
 		}
 		tethers.put(follower.getUUID(), tether);
+		// A bow drawn before mounting would otherwise still loose when let go.
+		follower.stopUsingItem();
 	}
 
 	/** Stop following, and stop being followed: whichever this player is doing, both. */

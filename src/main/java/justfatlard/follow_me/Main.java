@@ -9,6 +9,7 @@ import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
+import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -16,6 +17,12 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.EnderEyeItem;
+import net.minecraft.world.item.EnderpearlItem;
+import net.minecraft.world.item.FishingRodItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ProjectileItem;
+import net.minecraft.world.item.ProjectileWeaponItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,6 +73,14 @@ public class Main implements ModInitializer {
 			player instanceof ServerPlayer rider && Tethers.carried(rider) ? InteractionResult.FAIL : InteractionResult.PASS);
 		AttackBlockCallback.EVENT.register((player, level, hand, pos, direction) ->
 			player instanceof ServerPlayer rider && Tethers.carried(rider) ? InteractionResult.FAIL : InteractionResult.PASS);
+		UseItemCallback.EVENT.register((player, level, hand) -> {
+			if (!(player instanceof ServerPlayer rider && Tethers.carried(rider) && launches(player.getItemInHand(hand).getItem())))
+				return InteractionResult.PASS;
+			// The client already spent the snowball or drew the bow on its own say-so: put it back.
+			rider.containerMenu.sendAllDataToRemote();
+			say(rider, "Not while riding along");
+			return InteractionResult.FAIL;
+		});
 		PlayerBlockBreakEvents.BEFORE.register((level, player, pos, state, blockEntity) ->
 			!(player instanceof ServerPlayer rider && Tethers.carried(rider)));
 		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> Rides.onLoad(entity));
@@ -76,6 +91,12 @@ public class Main implements ModInitializer {
 
 		FollowConfig.menu();
 		LOGGER.info("Follow Me loaded");
+	}
+
+	/** Throws or shoots something out into the world. */
+	private static boolean launches(Item item) {
+		return item instanceof ProjectileWeaponItem || item instanceof ProjectileItem || item instanceof EnderpearlItem
+			|| item instanceof EnderEyeItem || item instanceof FishingRodItem;
 	}
 
 	/** On the action bar: following is something happening to you, not a conversation. */
