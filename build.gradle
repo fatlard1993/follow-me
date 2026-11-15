@@ -18,6 +18,24 @@ dependencies {
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
 	implementation(project(':pandorical'))
+
+	// Optional: big-boats, for the sloop a follower sails behind a leader at a ship's wheel. Compiled
+	// against when it sits beside this one; every big-boats type is named behind a loaded check
+	// (see integration/BigBoatsShips), so the mod runs the same without it.
+	def bigBoatsProperties = file("../big-boats/gradle.properties")
+	if (bigBoatsProperties.exists()) {
+		def bigBoatsVersion = new Properties().with {
+			bigBoatsProperties.withInputStream { load(it) }
+			getProperty("mod_version")
+		}
+		def bigBoatsJar = file("../big-boats/build/libs/big-boats-justfatlard-${bigBoatsVersion}.jar")
+		if (!bigBoatsJar.exists()) {
+			throw new GradleException("big-boats ${bigBoatsVersion} is not built. Run" +
+				" `mc-build big-boats` (or ./gradlew build in ../big-boats) first -" +
+				" this mod compiles against its API.")
+		}
+		compileOnly files(bigBoatsJar)
+	}
 }
 
 // Fabric tests these predicates against the loader's *normalized* game version,

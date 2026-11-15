@@ -4,6 +4,10 @@ import java.util.Iterator;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import justfatlard.follow_me.integration.BigBoatsShips;
+import justfatlard.pandorical.api.Capabilities;
+import justfatlard.pandorical.api.PandoricalApi;
+import justfatlard.pandorical.api.StructurePose;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
@@ -89,7 +93,12 @@ public final class Rides {
 		ALLAY(EntityTypes.ALLAY, 3.5, Kind.FLYING),
 		BAT(EntityTypes.BAT, 4.0, Kind.FLYING),
 		/** A baby happy ghast, grown a little: what flies anywhere nothing else suits. */
-		GHASTLING(EntityTypes.HAPPY_GHAST, 2.0, Kind.FLYING);
+		GHASTLING(EntityTypes.HAPPY_GHAST, 2.0, Kind.FLYING),
+		/**
+		 * Behind a leader at the wheel of a Big Boats ship: a {@link Sloop} of their own. The creature
+		 * is only what the sloop is carried on, and nobody sees it.
+		 */
+		SLOOP(EntityTypes.ARMADILLO, 1.0, Kind.FLUID);
 
 		final EntityType<?> type;
 		final double scale;
@@ -130,12 +139,23 @@ public final class Rides {
 		boolean aloft;
 		/** The latest place a steered ride stood on solid ground, for setting the rider down. */
 		Vec3 lastStood;
+		/** The leader's ship, while they are at her wheel; what the sloop is built to match. */
+		BigBoatsShips.Ship ship;
+		/** The top of the water under a sloop, as a block height. */
+		int sea;
+		/** How far above the creature the rider sits, read off them as they ride. */
+		double seat = 0.3;
 	}
 
 	/** On every mount, so one left in the world by a crash is recognised and cleared on load. */
 	private static final String TAG = "follow-me.ride";
 	private static final Set<UUID> live = ConcurrentHashMap.newKeySet();
 
+	/** Kept back along the trail: this, plus half again the creature's width, plus a spacing per place in line. */
+	private static final double FOLLOW_GAP = 4.5;
+	private static final double FOLLOW_SPACING = 3;
+	/** The share of that gap kept clear in a straight line, wherever the trail goes. */
+	private static final double PERSONAL_SPACE = 0.8;
 	private static final double FASTEST = 1.8;
 	private static final double SPEED_UP = 0.06;
 	private static final double SLOW_DOWN = 0.1;
@@ -187,6 +207,7 @@ public final class Rides {
 		ride.warped = false;
 		ride.steered = false;
 		Vec3 before = ride.at;
+		ride.ship = waiting ? null : BigBoatsShips.piloting(leader);
 
 		if (!waiting) {
 			if (follower.level() != leader.level()) {
@@ -195,12 +216,21 @@ public final class Rides {
 					|| portal.at().distanceTo(ride.at) <= 1.5;
 				if (atPortal) cross(tether, ride, follower, leader);
 			}
-			travel(tether, ride, follower, leader, place, leaderSpeed);
+			// Clear of her stern with the whole sloop: she reaches back from the wheel, and it forward from the seat.
+			double clearance = ride.ship == null ? 0 : ride.ship.reach() + Sloop.BOW;
+			travel(tether, ride, follower, leader, place, leaderSpeed, clearance);
 		}
 
 		Tethers.Crumb next = nextHere(tether, follower.level().dimension());
 		Vec3 aheadPoint = next != null ? next.at() : ride.at;
 		Theme wanted = theme(follower.level(), aheadPoint, next == null || next.standable(), next != null && next.aloft());
+		if (ride.ship != null && PandoricalApi.hasCapability(follower, Capabilities.STRUCTURES)) {
+			Integer sea = Sloop.sea(follower.level(), ride.at);
+			if (sea != null) {
+				wanted = Theme.SLOOP;
+				ride.sea = sea;
+			}
+		}
 		if (settle(ride, follower, wanted, before)) look(ride, follower, leader, waiting);
 	}
 
@@ -233,7 +263,8 @@ public final class Rides {
 		}
 
 		ServerLevel level = follower.level();
-		double pathY = ride.theme.kind == Kind.GROUND ? floor(level, ride.at) : ride.at.y;
+		double pathY = ride.theme == Theme.SLOOP ? ride.sea + 1 - ride.seat
+			: ride.theme.kind == Kind.GROUND ? floor(level, ride.at) : ride.at.y;
 		boolean fresh = ride.mount == null || ride.mount.isRemoved() || ride.ridden != ride.theme
 			|| ride.mount.level() != level;
 		if (fresh) {
@@ -253,7 +284,11 @@ public final class Rides {
 		mount.setDeltaMovement(Vec3.ZERO);
 		mount.clearFire();
 		if (mount instanceof AgeableMob young && ride.theme.baby()) young.setAge(AgeableMob.BABY_START_AGE);
-		if (follower.getVehicle() == mount) mount.positionRider(follower);
+		if (follower.getVehicle() == mount) {
+			mount.positionRider(follower);
+			ride.seat = follower.getY() - mount.getY();
+		}
+		if (ride.ridden == Theme.SLOOP) Sloop.move(mount, sloopPose(ride));
 
 		follower.setAirSupply(follower.getMaxAirSupply());
 		follower.clearFire();
@@ -394,10 +429,10 @@ public final class Rides {
 
 	/** Along the trail toward the leader, at a speed that eases up and down, or a jump where it must. */
 	private static void travel(Tethers.Tether tether, Ride ride, ServerPlayer follower, ServerPlayer leader,
-			int place, double leaderSpeed) {
+			int place, double leaderSpeed, double clearance) {
 		boolean together = follower.level() == leader.level();
 		double width = ride.mount != null ? ride.mount.getBbWidth() : 1.4;
-		double gap = 2.5 + width + 1.5 * place;
+		double gap = FOLLOW_GAP + 1.5 * width + FOLLOW_SPACING * place + clearance;
 		if (together) {
 			dropOtherSide(tether, follower.level().dimension());
 			Tethers.Crumb next = tether.trail.peekFirst();
@@ -414,6 +449,12 @@ public final class Rides {
 		double down = Math.max(SLOW_DOWN, ride.speed * 0.2);
 		ride.speed += Math.clamp(wantedSpeed - ride.speed, -down, up);
 		double budget = together ? Math.min(ride.speed, Math.max(0, behind - gap)) : ride.speed;
+		if (together) {
+			// The trail can bend back past the leader, as when they turn round: never ridden into
+			// them, as the crow flies, however far behind the trail still says it is.
+			double room = ride.at.distanceTo(leader.position()) - gap * PERSONAL_SPACE;
+			budget = Math.min(budget, Math.max(0, room));
+		}
 		advance(tether, ride, follower, leader, budget, together);
 	}
 
@@ -455,6 +496,12 @@ public final class Rides {
 		ride.nudgeYaw = stepYaw;
 		ride.nudgePitch = stepPitch;
 		follower.connection.send(new ClientboundPlayerRotationPacket(stepYaw, true, stepPitch, true));
+	}
+
+	/** The sloop round its rider, wherever the creature under them has got to. */
+	private static StructurePose sloopPose(Ride ride) {
+		Mob mount = ride.mount;
+		return Sloop.pose(new Vec3(mount.getX(), mount.getY() + ride.seat, mount.getZ()), ride.yaw);
 	}
 
 	private static Tethers.Crumb nextHere(Tethers.Tether tether, ResourceKey<Level> here) {
@@ -596,6 +643,7 @@ public final class Rides {
 		mob.addTag(TAG);
 		if (mob instanceof AgeableMob young) young.setAge(ride.theme.baby() ? AgeableMob.BABY_START_AGE : 0);
 		if (mob instanceof Bat bat) bat.setResting(false);
+		if (ride.theme == Theme.SLOOP) mob.setInvisible(true);
 		AttributeInstance scale = mob.getAttribute(Attributes.SCALE);
 		if (scale != null) scale.setBaseValue(ride.theme.scale);
 		// Known before it is added: adding it is what fires the load event that clears strays.
@@ -611,9 +659,16 @@ public final class Rides {
 			return;
 		}
 		Mob old = ride.mount;
+		Theme oldTheme = ride.ridden;
 		ride.mount = mob;
 		ride.ridden = ride.theme;
+		if (ride.theme == Theme.SLOOP) {
+			mob.positionRider(follower);
+			ride.seat = follower.getY() - mob.getY();
+			Sloop.spawn(mob, ride.ship, sloopPose(ride));
+		}
 		if (old != null) {
+			if (oldTheme == Theme.SLOOP) Sloop.despawn(old);
 			live.remove(old.getUUID());
 			if (!old.isRemoved()) {
 				old.ejectPassengers();
@@ -626,9 +681,11 @@ public final class Rides {
 
 	private static void discard(Ride ride, ServerPlayer follower) {
 		Mob mount = ride.mount;
+		Theme ridden = ride.ridden;
 		ride.mount = null;
 		ride.ridden = null;
 		if (mount == null) return;
+		if (ridden == Theme.SLOOP) Sloop.despawn(mount);
 		live.remove(mount.getUUID());
 		if (follower.getVehicle() == mount) follower.stopRiding();
 		if (!mount.isRemoved()) {

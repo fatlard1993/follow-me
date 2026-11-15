@@ -7,7 +7,9 @@
     "1.2.0": [
       "/follow nobody: a ride with nobody to follow, that you steer yourself. Same creature for the land, same safety; movement keys to go, jump to fly, sneak to come down and land.",
       "It steps up blocks, follows the ground down, stops at walls, and holds its height over an edge instead of falling.",
-      "Wander in the Follow action menu, and /follow assign <players> nobody for ops."
+      "Wander in the Follow action menu, and /follow assign <players> nobody for ops.",
+      "Followers keep further back, and further apart from each other, and never ride into the leader when the leader turns round and comes back toward them.",
+      "With Big Boats installed, following somebody at a ship's wheel puts you on a little sloop of your own, built of her planks and sail cloth, sailing in her wake clear of her stern."
     ],
     "1.1.0": [
       "Following is always a ride now: the follower is on a creature every moment of it, which is smoother than being walked and never stumbles.",

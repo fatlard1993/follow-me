@@ -20,4 +20,6 @@ Install server-side alongside its declared dependencies (see `fabric.mod.json`);
 
 A tether with no leader is a wanderer: `Rides.wander` moves the ride from the rider's own movement keys (`ServerPlayer.getLastClientInput()`, sent by the client even while seated) instead of along a trail, with its own small collision checks against blocks, then seats it through the same `settle` as a carried ride.
 
+Behind a leader at a Big Boats wheel, `integration/BigBoatsShips` reads her blocks (her reach from the helm, for the gap, and her commonest planks and wool) and the ride becomes `Theme.SLOOP`: an invisible armadillo at the top of the water, carrying a Pandorical structure built by `Sloop`. Big Boats is compiled against when `../big-boats` is beside this repo and built; every one of its types is named behind `isModLoaded`, with a `LinkageError` caught and warned once.
+
 `mixin/PlayerMixin` keeps sneaking from dismounting; Fabric's `ALLOW_DAMAGE` keeps rider and mount unhurt; mounts carry the `follow-me.ride` entity tag so any left behind by a crash are discarded when their chunk loads.

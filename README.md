@@ -10,10 +10,16 @@ The follower is sat on a creature that carries them along the leader's own trail
 - **Free to look.** The follower can look wherever they like. Left alone for a couple of seconds, their view drifts slowly round to the leader, and lets go the moment they move it again.
 - **Never left behind.** Once it has started, nothing parts them but one of them stopping it, or leaving. Fall far behind and the ride skips ahead along the trail; through a portal it meets the follower on the other side with a creature suited to there; a leader who teleports is caught up with at once, and one who dies is waited for and caught up with wherever they come back.
 - **Guaranteed safe.** The creature goes exactly where the leader went, without falling, sticking or being blocked by anything, and neither it nor its rider can be hurt, drown or burn. When it ends, the follower is set down beside the leader, or on the last place the leader stood, rather than over the lava or the drop the ride was crossing; with neither to hand, they get a slow fall and a fireproof few seconds instead.
-- **Fast.** It keeps a few lengths behind the leader, easing up to speed to catch up and slowing to a stop when they stop, and keeps up with an elytra.
+- **Out of the way.** It keeps a few lengths behind the leader, never closer than most of that as the crow flies, so turning round does not walk you into it. It eases up to speed to catch up and slows to a stop when they stop, and keeps up with an elytra.
 - **A line, not a pile.** Several people following one leader keep a little further back each, in the order they started.
 
 A ride suits a small child well: once the offer is accepted, there is nothing to get wrong and nothing that can hurt them.
+
+## Behind a ship
+
+With [Big Boats](https://github.com/fatlard1993/big-boats) installed, following somebody at the wheel of a ship puts you on a little ship of your own: a seven-block sloop with a mast and a sail, built of the same planks and sail cloth as hers, sailing in her wake and keeping clear of her stern. When she docks, or her captain lets go of the wheel, it goes back to a creature as usual.
+
+The sloop is drawn by Pandorical, so it needs Pandorical on the follower's game; without it they follow on a nautilus as they would at sea. It is never part of the world: it places no blocks, docks nowhere, and is gone when the ride ends.
 
 ## Behind nobody
 
@@ -82,6 +88,7 @@ There is a **Follow** action menu too, with **Ride along** and **Give a ride** (
 
 - Minecraft, Fabric Loader, Fabric API: the versions declared in this mod's `gradle.properties`.
 - [Pandorical](https://github.com/fatlard1993/pandorical) on the server. A client without it can still do all of it with `/follow`, and answers asks from chat.
+- Optional: [Big Boats](https://github.com/fatlard1993/big-boats), for following a ship on a sloop.
 
 ## Pandorical
 
