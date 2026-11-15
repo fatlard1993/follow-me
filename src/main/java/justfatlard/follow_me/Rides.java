@@ -1,6 +1,7 @@
 package justfatlard.follow_me;
 
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,11 +35,14 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ambient.Bat;
 import net.minecraft.world.entity.player.Input;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 
 /**
  * Theme ride: the follower is carried, not walked. They sit on a creature that suits the ground
@@ -166,6 +170,8 @@ public final class Rides {
 	private static final double WARP = 12;
 	/** A skip further than this takes the rider by teleport, so their game loads where they land. */
 	private static final double FAR_SKIP = 32;
+	/** Directions tried round the way out of a portal, for followers coming through to spread into. */
+	private static final int SPREAD_ANGLES = 12;
 	private static final int SCENERY_TICKS = 20;
 	private static final int SUBSTRATE_TICKS = 6;
 	/** A steered ride's pace, in blocks a tick: a trot, a gallop when sprinting, and up or down. */
@@ -604,6 +610,7 @@ public final class Rides {
 	 * the same tick.
 	 */
 	private static void cross(Tethers.Tether tether, Ride ride, ServerPlayer follower, ServerPlayer leader) {
+		double width = ride.mount != null ? ride.mount.getBbWidth() : 1.4;
 		discard(ride, follower);
 		ServerLevel there = leader.level();
 		Vec3 landing = null;
@@ -616,6 +623,7 @@ public final class Rides {
 			tether.trail.pollFirst();
 		}
 		if (landing == null) landing = leader.position();
+		landing = roomBeside(there, landing, leader, width, Tethers.ridesIn(there.dimension(), tether));
 		follower.teleportTo(there, landing.x, landing.y, landing.z, Set.<Relative>of(),
 			follower.getYRot(), follower.getXRot(), false);
 		follower.resetFallDistance();
@@ -623,6 +631,36 @@ public final class Rides {
 		ride.speed = 0;
 		ride.warped = true;
 		tether.portal = null;
+	}
+
+	/**
+	 * Somewhere near where the leader came out that this ride has to itself: clear of the leader and
+	 * of every ride already there, on its feet, in the open, and in sight of the way out, so nobody's
+	 * view starts inside somebody else's creature. Tried behind the leader first, then round either
+	 * side and further out; the way out itself when nowhere else will do.
+	 */
+	private static Vec3 roomBeside(ServerLevel level, Vec3 out, ServerPlayer leader, double width, List<Vec3> taken) {
+		Vec3 facing = leader.getLookAngle().multiply(1, 0, 1);
+		double behind = facing.lengthSqr() < 1.0E-4 ? 0 : Math.atan2(-facing.z, -facing.x);
+		Vec3 eye = out.add(0, 1.5, 0);
+		for (double reach : new double[] {2 + width, 3 + width, 4.5 + width}) {
+			for (int i = 0; i < SPREAD_ANGLES; i++) {
+				// 0, then a step either side, then two, round to the front last.
+				int step = (i + 1) / 2 * (i % 2 == 0 ? -1 : 1);
+				double angle = behind + step * (2 * Math.PI / SPREAD_ANGLES);
+				Footing footing = footing(level, out.x + Math.cos(angle) * reach, out.y, out.z + Math.sin(angle) * reach);
+				if (footing == null || footing.edge()) continue;
+				Vec3 spot = footing.at();
+				if (fluid(level, spot) || !open(level, spot.add(0, 1, 0))) continue;
+				if (leader.level() == level && spot.distanceTo(leader.position()) < 1.5 + width) continue;
+				if (taken.stream().anyMatch(other -> other.distanceTo(spot) < width + 1.5)) continue;
+				ClipContext sight = new ClipContext(eye, spot.add(0, 1.5, 0), ClipContext.Block.COLLIDER,
+					ClipContext.Fluid.NONE, CollisionContext.empty());
+				if (level.clip(sight).getType() != HitResult.Type.MISS) continue;
+				return spot;
+			}
+		}
+		return out;
 	}
 
 	/** The rider onto a fresh creature, then the old one away: never a tick on foot between. */

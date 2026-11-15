@@ -1,6 +1,7 @@
 package justfatlard.follow_me;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -10,6 +11,7 @@ import java.util.UUID;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
@@ -239,6 +241,17 @@ public final class Tethers {
 		boolean aloft = leader.isFallFlying() || leader.getAbilities().flying || leader.onClimbable();
 		tether.trail.addLast(new Crumb(at, level, leader.onGround() && !leader.isPassenger(), aloft));
 		while (tether.trail.size() > TRAIL_LENGTH) tether.trail.pollFirst();
+	}
+
+	/** Where every other ride in this dimension stands right now. */
+	static List<Vec3> ridesIn(ResourceKey<Level> level, Tether except) {
+		List<Vec3> rides = new ArrayList<>();
+		for (Tether tether : tethers.values()) {
+			if (tether == except || tether.carriage == null) continue;
+			Mob mount = tether.carriage.mount;
+			if (mount != null && !mount.isRemoved() && mount.level().dimension() == level) rides.add(mount.position());
+		}
+		return rides;
 	}
 
 	static ServerPlayer player(MinecraftServer server, UUID id) {
