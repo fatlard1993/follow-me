@@ -6,12 +6,16 @@ import justfatlard.pandorical.api.PandoricalApi;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
+import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
+import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
+import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,8 +57,17 @@ public class Main implements ModInitializer {
 			Tethers.tick(server);
 		});
 		// Riding along is guaranteed safe: neither the rider nor what carries them can be hurt.
+		// And it runs both ways: a rider hurts nothing, not by hand and not by anything they loosed.
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) ->
-			!(entity instanceof ServerPlayer player && Tethers.carried(player)) && !Rides.isMount(entity));
+			!(entity instanceof ServerPlayer player && Tethers.carried(player)) && !Rides.isMount(entity)
+				&& !(source.getEntity() instanceof ServerPlayer attacker && Tethers.carried(attacker)));
+		// Hands off the world while riding: no swinging at things, no breaking blocks.
+		AttackEntityCallback.EVENT.register((player, level, hand, entity, hit) ->
+			player instanceof ServerPlayer rider && Tethers.carried(rider) ? InteractionResult.FAIL : InteractionResult.PASS);
+		AttackBlockCallback.EVENT.register((player, level, hand, pos, direction) ->
+			player instanceof ServerPlayer rider && Tethers.carried(rider) ? InteractionResult.FAIL : InteractionResult.PASS);
+		PlayerBlockBreakEvents.BEFORE.register((level, player, pos, state, blockEntity) ->
+			!(player instanceof ServerPlayer rider && Tethers.carried(rider)));
 		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> Rides.onLoad(entity));
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
 			Asks.forget(server, handler.getPlayer().getUUID());

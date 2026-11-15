@@ -4,6 +4,11 @@
     "Either way round, the one asked decides; an op can also put players behind a leader with /follow assign."
   ],
   "versions": {
+    "1.2.1": [
+      "Riders are out of the fight: no mob will target someone riding along, and one already after them gives up.",
+      "Riders keep their hands to themselves: they cannot hit anything, hurt anything with what they shoot or throw, or break blocks.",
+      "Items, arrows, tridents and experience stay on the ground as a rider passes, for whoever is walking."
+    ],
     "1.2.0": [
       "/follow nobody: a ride with nobody to follow, that you steer yourself. Same creature for the land, same safety; movement keys to go, jump to fly, sneak to come down and land.",
       "It steps up blocks, follows the ground down, stops at walls, and holds its height over an edge instead of falling.",
