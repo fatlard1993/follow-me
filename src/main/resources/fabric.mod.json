@@ -3,7 +3,7 @@
   "id": "follow-me",
   "version": "${version}",
   "name": "Follow Me",
-  "description": "Ask to follow another player, or ask them to follow you, and the follower rides along behind on a creature that suits the land: hands off, unhurtable, and never left behind",
+  "description": "Follow another player, or have them follow you, riding along behind",
   "authors": [
     "justfatlard"
   ],
