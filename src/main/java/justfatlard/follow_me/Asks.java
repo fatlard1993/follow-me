@@ -67,7 +67,7 @@ public final class Asks {
 
 		String who = Tethers.name(asker);
 		String them = Tethers.name(asked);
-		long until = asker.level().getGameTime() + 20L * FollowConfig.requestSeconds();
+		long until = asker.level().getGameTime() + 20L * FollowConfig.requestSeconds(asker.level().getServer());
 		Ask previous = asks.put(asker.getUUID(), new Ask(asker.getUUID(), asked.getUUID(), until, way));
 		if (previous != null && !previous.asked().equals(asked.getUUID())) {
 			withdraw(Tethers.player(asker.level().getServer(), previous.asked()), asker.getUUID());
@@ -92,7 +92,7 @@ public final class Asks {
 				List.of(new NoticeApi.Choice("accept", "minecraft:lime_dye",
 						way == Way.FOLLOW ? "Lead them" : "Ride along"),
 					new NoticeApi.Choice("deny", "minecraft:barrier", "No thanks")),
-				FollowConfig.requestSeconds()));
+				FollowConfig.requestSeconds(asker.level().getServer())));
 		} else {
 			asked.sendSystemMessage(asking.copy()
 				.withStyle(ChatFormatting.LIGHT_PURPLE)

@@ -102,5 +102,6 @@ Pandorical is required on the server. The notice tray asks arrive in, the Follow
 
 | Setting | Default | |
 |---|---|---|
-| `request_seconds` | `60` | How long an ask stands before it lapses. |
 | `leash` | `32` | How close, in blocks, a follower must be to the leader for an ask to start it. `/follow assign` is not held to it. |
+
+How long an ask stands is one setting for every mod's requests, on Pandorical's page of the mod menu.

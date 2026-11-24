@@ -16,15 +16,11 @@ public final class FollowConfig {
 
 	private static final Path CONFIG_PATH = FabricLoader.getInstance().getConfigDir().resolve(Main.MOD_ID + ".properties");
 
-	private static int requestSeconds = 60;
 	private static int leash = 32;
 
 	private static final String DEFAULT_CONFIG = """
 			# Follow Me Configuration
 			# Delete this file to regenerate with defaults.
-
-			# How long a request to follow, or to be followed, stands before it lapses, in seconds.
-			request_seconds=60
 
 			# How close, in blocks, a follower must be to the one they follow for it to start.
 			# Once started nothing ends it but either of them stopping it or leaving.
@@ -41,7 +37,6 @@ public final class FollowConfig {
 			try (Reader reader = Files.newBufferedReader(CONFIG_PATH)) {
 				props.load(reader);
 			}
-			requestSeconds = number(props, "request_seconds", 60, 10, 600);
 			leash = number(props, "leash", 32, 16, 128);
 		} catch (IOException e) {
 			Main.LOGGER.error("[{}] Could not read config, using defaults: {}", Main.MOD_ID, e.toString());
@@ -57,8 +52,9 @@ public final class FollowConfig {
 		}
 	}
 
-	public static int requestSeconds() {
-		return requestSeconds;
+	/** How long a request stands: one setting for every mod's requests, on Pandorical's page of the mod menu. */
+	public static int requestSeconds(net.minecraft.server.MinecraftServer server) {
+		return PandoricalApi.notices().requestSeconds(server);
 	}
 
 	public static int leash() {
@@ -87,11 +83,6 @@ public final class FollowConfig {
 
 	public static void menu() {
 		var group = PandoricalApi.settings().serverGroup(Main.MOD_ID, "Follow Me");
-		group.number("requestSeconds", "Requests last, seconds", 10, 600, 10, 60)
-			.backedBy(player -> requestSeconds, (player, value) -> {
-				requestSeconds = value;
-				store("request_seconds", String.valueOf(value));
-			});
 		group.number("leash", "Start within, blocks", 16, 128, 4, 32)
 			.describe("How close a follower must be to the one they follow for it to start")
 			.backedBy(player -> leash, (player, value) -> {
