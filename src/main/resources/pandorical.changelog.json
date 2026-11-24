@@ -4,6 +4,10 @@
     "Either way round, the one asked decides; an op can also put players behind a leader with /follow assign."
   ],
   "versions": {
+    "1.2.4": [
+      "How long an ask stands is Pandorical's one setting for every mod's requests.",
+      "An older Pandorical no longer keeps this out of a server: asks stand 60 seconds until Pandorical has the shared setting."
+    ],
     "1.2.3": [
       "Describes itself in one short line of what it adds."
     ],
